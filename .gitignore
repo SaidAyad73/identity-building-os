@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local runtime SQLite database (auto-created on startup)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

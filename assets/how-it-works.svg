@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 360" width="100%" height="auto" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fcfcfb"/>
+      <stop offset="100%" stop-color="#f2f0e8"/>
+    </linearGradient>
+    <filter id="cardShadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#141413" flood-opacity="0.07"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#787670"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="360" rx="18" fill="url(#bgGrad)" stroke="#e2e0d8" stroke-width="2"/>
+
+  <!-- Header -->
+  <text x="550" y="42" text-anchor="middle" font-size="20" font-weight="700" fill="#141413">How Identity Building OS Works — Every Action Is a Vote</text>
+  <text x="550" y="66" text-anchor="middle" font-size="13" fill="#52514e">Inspired by James Clear’s Atomic Habits: focus on who you are becoming, not just checking boxes.</text>
+
+  <!-- Step 1: Choose Who You Want to Become -->
+  <g transform="translate(36, 95)" filter="url(#cardShadow)">
+    <rect width="230" height="225" rx="14" fill="#ffffff" stroke="#e2e0d8" stroke-width="1.5"/>
+    <rect width="230" height="6" rx="3" fill="#2a78d6"/>
+    <circle cx="32" cy="36" r="14" fill="#e8f1fc"/>
+    <text x="32" y="41" text-anchor="middle" font-size="13" font-weight="700" fill="#2a78d6">1</text>
+    <text x="56" y="40" font-size="15" font-weight="700" fill="#141413">Define Identities</text>
+    <text x="20" y="68" font-size="12" fill="#52514e">Decide the person you want</text>
+    <text x="20" y="84" font-size="12" fill="#52514e">to become &amp; your boundaries:</text>
+
+    <!-- Pills -->
+    <rect x="20" y="100" width="190" height="26" rx="13" fill="#f6f5f2" stroke="#d5d3ca"/>
+    <circle cx="34" cy="113" r="5" fill="#2a78d6"/>
+    <text x="46" y="117" font-size="11.5" font-weight="600" fill="#141413">Entrepreneur / Builder</text>
+
+    <rect x="20" y="134" width="190" height="26" rx="13" fill="#f6f5f2" stroke="#d5d3ca"/>
+    <circle cx="34" cy="147" r="5" fill="#eda100"/>
+    <text x="46" y="151" font-size="11.5" font-weight="600" fill="#141413">Avid Reader</text>
+
+    <rect x="20" y="168" width="190" height="26" rx="13" fill="#f6f5f2" stroke="#d5d3ca"/>
+    <circle cx="34" cy="181" r="5" fill="#008300"/>
+    <text x="46" y="185" font-size="11.5" font-weight="600" fill="#141413">Balanced Person (Guilt-Free Fun)</text>
+  </g>
+
+  <!-- Connector 1 -> 2 -->
+  <line x1="272" y1="207" x2="300" y2="207" stroke="#787670" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 2: Cast Daily Votes (or 2-Minute Starters) -->
+  <g transform="translate(306, 95)" filter="url(#cardShadow)">
+    <rect width="230" height="225" rx="14" fill="#ffffff" stroke="#e2e0d8" stroke-width="1.5"/>
+    <rect width="230" height="6" rx="3" fill="#1baf7a"/>
+    <circle cx="32" cy="36" r="14" fill="#e5f7f0"/>
+    <text x="32" y="41" text-anchor="middle" font-size="13" font-weight="700" fill="#1baf7a">2</text>
+    <text x="56" y="40" font-size="15" font-weight="700" fill="#141413">Cast Daily Votes</text>
+    <text x="20" y="68" font-size="12" fill="#52514e">Log real actions in 1 click.</text>
+    <text x="20" y="84" font-size="12" fill="#52514e">Low energy? Use 2-Minute Mode:</text>
+
+    <rect x="20" y="102" width="190" height="46" rx="8" fill="#f6f5f2" stroke="#1baf7a" stroke-width="1.2"/>
+    <text x="30" y="121" font-size="11.5" font-weight="700" fill="#141413">✓ Read 15 pages out of curiosity</text>
+    <text x="30" y="138" font-size="10.5" fill="#1baf7a" font-weight="600">+1 Vote → Avid Reader</text>
+
+    <rect x="20" y="158" width="190" height="50" rx="8" fill="#f6f5f2" stroke="#d5d3ca"/>
+    <text x="30" y="176" font-size="11.5" font-weight="700" fill="#141413">⚡ Started at 9 AM on MVP</text>
+    <text x="30" y="194" font-size="10.5" fill="#2a78d6" font-weight="600">0.5 Entrepreneur · 0.5 Disciplined</text>
+  </g>
+
+  <!-- Connector 2 -> 3 -->
+  <line x1="542" y1="207" x2="570" y2="207" stroke="#787670" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 3: See Your True Identity Balance -->
+  <g transform="translate(576, 95)" filter="url(#cardShadow)">
+    <rect width="230" height="225" rx="14" fill="#ffffff" stroke="#e2e0d8" stroke-width="1.5"/>
+    <rect width="230" height="6" rx="3" fill="#eb6834"/>
+    <circle cx="32" cy="36" r="14" fill="#fdeee8"/>
+    <text x="32" y="41" text-anchor="middle" font-size="13" font-weight="700" fill="#eb6834">3</text>
+    <text x="56" y="40" font-size="15" font-weight="700" fill="#141413">Visual Balance</text>
+    <text x="20" y="68" font-size="12" fill="#52514e">See which identities your time</text>
+    <text x="20" y="84" font-size="12" fill="#52514e">supports—with zero double-counting.</text>
+
+    <!-- Mini Donut Illustration -->
+    <circle cx="115" cy="154" r="42" fill="none" stroke="#2a78d6" stroke-width="16" stroke-dasharray="90 264" stroke-dashoffset="0"/>
+    <circle cx="115" cy="154" r="42" fill="none" stroke="#1baf7a" stroke-width="16" stroke-dasharray="65 264" stroke-dashoffset="-92"/>
+    <circle cx="115" cy="154" r="42" fill="none" stroke="#eda100" stroke-width="16" stroke-dasharray="55 264" stroke-dashoffset="-159"/>
+    <circle cx="115" cy="154" r="42" fill="none" stroke="#008300" stroke-width="16" stroke-dasharray="48 264" stroke-dashoffset="-216"/>
+    <text x="115" y="159" text-anchor="middle" font-size="14" font-weight="700" fill="#141413">100%</text>
+  </g>
+
+  <!-- Connector 3 -> 4 -->
+  <line x1="812" y1="207" x2="840" y2="207" stroke="#787670" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 4: Weekly Reflection & 1 Improvement -->
+  <g transform="translate(846, 95)" filter="url(#cardShadow)">
+    <rect width="218" height="225" rx="14" fill="#ffffff" stroke="#e2e0d8" stroke-width="1.5"/>
+    <rect width="218" height="6" rx="3" fill="#e87ba4"/>
+    <circle cx="32" cy="36" r="14" fill="#fceef4"/>
+    <text x="32" y="41" text-anchor="middle" font-size="13" font-weight="700" fill="#d55181">4</text>
+    <text x="56" y="40" font-size="15" font-weight="700" fill="#141413">Weekly Review</text>
+    <text x="20" y="68" font-size="12" fill="#52514e">Auto-summarizes your week’s</text>
+    <text x="20" y="84" font-size="12" fill="#52514e">wins, quiet areas &amp; obstacles.</text>
+
+    <rect x="20" y="104" width="178" height="44" rx="8" fill="#f6f5f2"/>
+    <text x="30" y="122" font-size="11" font-weight="700" fill="#52514e">PINNED FOR NEXT WEEK</text>
+    <text x="30" y="138" font-size="11" fill="#141413">“Leave book on pillow at 8am”</text>
+
+    <rect x="20" y="158" width="178" height="44" rx="8" fill="#e8f1fc"/>
+    <text x="30" y="176" font-size="11" font-weight="700" fill="#2a78d6">NEVER MISS TWICE</text>
+    <text x="30" y="192" font-size="11" fill="#141413">Slips are data, not failure.</text>
+  </g>
+</svg>

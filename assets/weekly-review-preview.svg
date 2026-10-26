@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="100%" height="auto" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif">
+  <defs>
+    <filter id="shadowRev" x="-2%" y="-2%" width="104%" height="106%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#141413" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="520" rx="16" fill="#f6f5f2" stroke="#d5d3ca" stroke-width="2"/>
+
+  <!-- Left Panel: Auto-Compiled Weekly Evidence -->
+  <g transform="translate(24, 24)" filter="url(#shadowRev)">
+    <rect width="550" height="472" rx="12" fill="#fcfcfb" stroke="#e2e0d8"/>
+    <text x="22" y="34" font-size="16" font-weight="700" fill="#141413">Auto-Compiled Weekly Evidence</text>
+    <text x="22" y="52" font-size="12" fill="#52514e">Summarized automatically from your daily votes—no manual counting</text>
+
+    <rect x="374" y="18" width="154" height="30" rx="7" fill="#f0efe9" stroke="#c9c6bc"/>
+    <text x="451" y="37" text-anchor="middle" font-size="11.5" font-weight="700" fill="#141413">Auto-Fill Reflection →</text>
+
+    <!-- Block 1 -->
+    <rect x="22" y="70" width="506" height="86" rx="9" fill="#f0efe9"/>
+    <text x="36" y="92" font-size="12" font-weight="700" fill="#52514e">1. IDENTITIES SUPPORTED THIS WEEK</text>
+    <text x="36" y="114" font-size="12.5" fill="#141413">• <tspan font-weight="700">Entrepreneur / Startup CEO</tspan>: 1.5 weighted votes (30%) across 2 actions</text>
+    <text x="36" y="136" font-size="12.5" fill="#141413">• <tspan font-weight="700">Disciplined Person</tspan>: 1.0 weighted votes (20%) across 2 actions</text>
+
+    <!-- Block 2 -->
+    <rect x="22" y="168" width="506" height="72" rx="9" fill="#f0efe9"/>
+    <text x="36" y="190" font-size="12" font-weight="700" fill="#52514e">2. QUIET / UNVOTED IDENTITIES (INFORMATION, NOT FAILURE)</text>
+    <text x="36" y="214" font-size="12.5" fill="#141413">• Social Person / Creator (0 votes this week — Rule 3: seasonal focus is normal)</text>
+
+    <!-- Block 3 -->
+    <rect x="22" y="252" width="506" height="96" rx="9" fill="#f0efe9"/>
+    <text x="36" y="274" font-size="12" font-weight="700" fill="#52514e">3. LOGGED OBSTACLES &amp; FRICTION CUES</text>
+    <text x="36" y="298" font-size="12.5" fill="#d97706" font-weight="600">⚠ Late-night scrolling on phone (Thu)</text>
+    <text x="36" y="318" font-size="12" fill="#52514e">Cue noted: Phone was charging right next to the bed instead[...]</text>
+
+    <!-- Block 4 -->
+    <rect x="22" y="360" width="506" height="90" rx="9" fill="#f0efe9"/>
+    <text x="36" y="382" font-size="12" font-weight="700" fill="#52514e">4. STRONGEST CONCRETE EVIDENCE</text>
+    <text x="36" y="406" font-size="12.5" fill="#141413">★ <tspan font-weight="700">Implemented a product feature</tspan> — Shipped core workflow step</text>
+    <text x="36" y="428" font-size="12.5" fill="#141413">★ <tspan font-weight="700">Played a game after completing commitments</tspan> — Guilt-free balance</text>
+  </g>
+
+  <!-- Right Panel: Guided Reflection -->
+  <g transform="translate(594, 24)" filter="url(#shadowRev)">
+    <rect width="582" height="472" rx="12" fill="#fcfcfb" stroke="#e2e0d8"/>
+    <text x="22" y="34" font-size="16" font-weight="700" fill="#141413">Weekly Reflection &amp; Next Week’s Adjustment</text>
+    <text x="22" y="52" font-size="12" fill="#52514e">Turn this week’s behavioral evidence into one clear adjustment</text>
+
+    <rect x="426" y="18" width="134" height="32" rx="7" fill="#2a78d6"/>
+    <text x="493" y="38" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">Save Weekly Review</text>
+
+    <!-- Q1 -->
+    <text x="22" y="84" font-size="12.5" font-weight="700" fill="#141413">What identity did my actions support this week?</text>
+    <rect x="22" y="92" width="538" height="46" rx="7" fill="#ffffff" stroke="#c9c6bc"/>
+    <text x="34" y="119" font-size="12" fill="#141413">Strong votes for Entrepreneur, Freelancer, Avid Reader, and Balanced leisure.</text>
+
+    <!-- Q2 -->
+    <text x="22" y="160" font-size="12.5" font-weight="700" fill="#141413">Where did my behavior contradict my desired identity?</text>
+    <rect x="22" y="168" width="538" height="46" rx="7" fill="#ffffff" stroke="#c9c6bc"/>
+    <text x="34" y="195" font-size="12" fill="#141413">Phone on desk triggered scrolling on Thursday; Social/Creator had 0 votes.</text>
+
+    <!-- Pinned Next Week Adjustment -->
+    <text x="22" y="238" font-size="12.5" font-weight="700" fill="#2a78d6">Pinned Improvement for Next Week (Law 1 — Make It Obvious)</text>
+    <rect x="22" y="246" width="538" height="42" rx="7" fill="#e8f1fc" stroke="#2a78d6" stroke-width="1.5"/>
+    <text x="34" y="272" font-size="12.5" font-weight="600" fill="#141413">Charge phone in kitchen at 10 PM and leave book on pillow every morning.</text>
+
+    <!-- Next Smallest Action & Stage -->
+    <text x="22" y="314" font-size="12.5" font-weight="700" fill="#141413">My Next Smallest Meaningful Action (Two-Minute Rule)</text>
+    <rect x="22" y="322" width="538" height="38" rx="7" fill="#ffffff" stroke="#c9c6bc"/>
+    <text x="34" y="346" font-size="12" fill="#141413">Jot down 1 YouTube idea bullet after Saturday morning coffee.</text>
+
+    <text x="22" y="384" font-size="12.5" font-weight="700" fill="#141413">Current Identity Stage</text>
+    <rect x="22" y="392" width="538" height="38" rx="7" fill="#f0efe9" stroke="#c9c6bc"/>
+    <text x="34" y="416" font-size="12.5" font-weight="700" fill="#1baf7a">Building evidence — Repeatedly performing relevant behaviors as part of routine</text>
+  </g>
+</svg>

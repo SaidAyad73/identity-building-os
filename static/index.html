@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Identity Building OS</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header & Navigation -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">◎</div>
+        <div>
+          <h1 class="brand-title">Identity Building OS</h1>
+          <p class="brand-subtitle">Every action is a vote for the person you wish to become</p>
+        </div>
+      </div>
+
+      <nav class="main-nav" aria-label="Primary Views">
+        <button type="button" class="nav-tab active" data-view="dashboard">
+          Dashboard
+        </button>
+        <button type="button" class="nav-tab" data-view="review">
+          Weekly Review
+        </button>
+        <button type="button" class="nav-tab" data-view="guidance">
+          Atomic Habits Playbook (.md)
+        </button>
+        <button type="button" class="nav-tab" data-view="manage">
+          Extend &amp; Configure
+        </button>
+      </nav>
+
+      <div class="topbar-actions">
+        <button type="button" id="twoMinModeBtn" class="pill-toggle" title="Law 3: Scale all habits down to their Two-Minute Rule starter version">
+          <span class="dot-indicator"></span>
+          <span>2-Minute Mode</span>
+        </button>
+        <button type="button" id="themeToggleBtn" class="icon-btn" title="Switch Light / Dark Theme" aria-label="Switch Theme">
+          ◐
+        </button>
+      </div>
+    </header>
+
+    <!-- Pinned Weekly Adjustment Banner (Law 1: Make It Obvious) -->
+    <section id="pinnedBanner" class="pinned-banner" aria-label="Current Weekly Focus">
+      <div class="pinned-content">
+        <span class="pinned-label">THIS WEEK'S FOCUS</span>
+        <span id="pinnedAdjustmentText" class="pinned-text"></span>
+      </div>
+      <button type="button" class="btn-link" data-jump-view="review">Update in Weekly Review →</button>
+    </section>
+
+    <!-- Time & Scope Controls -->
+    <section class="toolbar-bar">
+      <div class="scope-group" role="group" aria-label="Timeframe Scope">
+        <button type="button" class="scope-btn active" data-scope="week">This Week</button>
+        <button type="button" class="scope-btn" data-scope="day">Selected Day</button>
+      </div>
+
+      <div class="date-nav">
+        <button type="button" id="prevDayBtn" class="icon-btn-sm" title="Previous Day">‹ Day</button>
+        <input type="date" id="selectedDateInput" class="date-input" aria-label="Selected Date" />
+        <button type="button" id="nextDayBtn" class="icon-btn-sm" title="Next Day">Day ›</button>
+        <button type="button" id="todayBtn" class="btn-ghost-sm">Today</button>
+        <span id="weekRangeLabel" class="week-range-badge"></span>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- VIEW 1: DASHBOARD                                                  -->
+    <!-- ================================================================== -->
+    <main id="view-dashboard" class="view-panel active">
+      <!-- Quick-Capture Evidence Bar -->
+      <section class="card quick-capture-card" aria-labelledby="quickCaptureHeading">
+        <div class="quick-capture-header">
+          <h2 id="quickCaptureHeading" class="section-kicker">CAST A VOTE — LOG BEHAVIORAL EVIDENCE</h2>
+          <div class="capture-kind-switch" role="group" aria-label="Entry Type">
+            <button type="button" class="kind-btn active" data-kind="vote" title="Positive behavioral vote">
+              + Identity Vote
+            </button>
+            <button type="button" class="kind-btn" data-kind="obstacle" title="Rule 4: Missing a habit is information, not a character verdict">
+              ⚠ Log Obstacle / Friction
+            </button>
+          </div>
+        </div>
+
+        <form id="quickCaptureForm" class="quick-capture-form">
+          <div class="capture-inputs-row">
+            <input
+              type="text"
+              id="actionTitleInput"
+              class="input-main"
+              placeholder="What concrete action did you take? (e.g., Shipped landing page, Read 15 pages, Stopped gaming on time)"
+              required
+            />
+            <input
+              type="text"
+              id="actionEvidenceInput"
+              class="input-secondary"
+              placeholder="Evidence / Result note (optional)"
+            />
+            <label class="two-min-check" title="Did you use the Two-Minute Rule to start this action?">
+              <input type="checkbox" id="actionTwoMinCheck" />
+              <span>2-Min Starter</span>
+            </label>
+            <button type="submit" id="submitActionBtn" class="btn-primary">
+              Cast Vote
+            </button>
+          </div>
+
+          <div class="identity-selector-row">
+            <span class="selector-label">Identities supported (select 1 or more):</span>
+            <div id="captureIdentityPills" class="identity-pills-wrap"></div>
+          </div>
+        </form>
+      </section>
+
+      <!-- Visual Analytics Row: Identity Pie Chart + Calendar Strip -->
+      <section class="bento-grid">
+        <!-- Identity Pie / Donut Chart Card -->
+        <article class="card chart-card">
+          <div class="card-header-row">
+            <div>
+              <h2 class="card-title">Identity Vote Distribution</h2>
+              <p class="card-subtitle" id="chartSubtitle">
+                Normalized fractional attribution (multi-identity actions split weight 1/k — zero double-counting)
+              </p>
+            </div>
+            <span class="rule-badge" title="Rule 3 from your system">
+              Rule 3: Equal weekly balance is not required
+            </span>
+          </div>
+
+          <div class="chart-layout">
+            <div class="donut-container">
+              <svg id="identityDonutSvg" viewBox="0 0 240 240" class="donut-svg" role="img" aria-label="Identity Vote Distribution Donut Chart"></svg>
+              <div id="chartTooltip" class="chart-tooltip" hidden></div>
+            </div>
+
+            <div class="chart-legend-wrap">
+              <table class="legend-table" aria-label="Identity Vote Breakdown">
+                <thead>
+                  <tr>
+                    <th>Identity</th>
+                    <th class="num">Weighted Votes</th>
+                    <th class="num">Share</th>
+                    <th class="num">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="chartLegendBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+
+        <!-- Weekly Calendar Strip & 28-Day Consistency Card -->
+        <article class="card calendar-card">
+          <div class="card-header-row">
+            <div>
+              <h2 class="card-title">Consistency &amp; Activity Calendar</h2>
+              <p class="card-subtitle">Click any day to inspect or log actions for that date</p>
+            </div>
+            <div class="kpi-mini-row">
+              <div class="kpi-pill">
+                <span class="kpi-num" id="kpiTotalVotes">0</span>
+                <span class="kpi-label">Votes</span>
+              </div>
+              <div class="kpi-pill">
+                <span class="kpi-num" id="kpiTwoMinCount">0</span>
+                <span class="kpi-label">2-Min Starts</span>
+              </div>
+              <div class="kpi-pill">
+                <span class="kpi-num" id="kpiActiveIdents">0</span>
+                <span class="kpi-label">Identities</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="weekDaysStrip" class="week-strip" role="list" aria-label="7-Day Week Strip"></div>
+
+          <div class="heatmap-section">
+            <div class="heatmap-header">
+              <span class="section-kicker">LAST 28 DAYS — REPEATED BEHAVIOR OVER STREAKS</span>
+              <span class="recovery-legend">↺ = "Never Miss Twice" Recovery Day</span>
+            </div>
+            <div id="heatmapGrid" class="heatmap-grid" role="list" aria-label="28-Day Consistency Grid"></div>
+          </div>
+        </article>
+      </section>
+
+      <!-- Dynamic Identity Cards Grid -->
+      <section class="identities-section">
+        <div class="section-header-bar">
+          <div>
+            <h2 class="section-title">Desired Identities &amp; 1-Click Habit Votes</h2>
+            <p class="section-desc">Click <strong>+ Vote</strong> on any recurring habit to record today's evidence immediately, or add new identities and habits.</p>
+          </div>
+          <div class="section-actions">
+            <button type="button" id="openNewHabitModalBtn" class="btn-secondary">+ New Habit</button>
+            <button type="button" id="openNewIdentityModalBtn" class="btn-primary">+ New Identity</button>
+          </div>
+        </div>
+
+        <div id="identityCardsGrid" class="identity-cards-grid"></div>
+      </section>
+
+      <!-- Anti-Identity Guardrails + Activity Evidence Feed -->
+      <section class="bottom-split-grid">
+        <!-- Anti-Identity Guardrails Card -->
+        <article class="card anti-identity-card">
+          <div class="card-header-row">
+            <div>
+              <h2 class="card-title">Anti-Identity Guardrails &amp; Balance</h2>
+              <p id="antiPrincipleDisplay" class="anti-principle-quote"></p>
+            </div>
+            <button type="button" id="addGuardrailBtn" class="btn-ghost-sm">+ Guardrail</button>
+          </div>
+          <p class="card-subtitle">
+            Log a positive boundary win when you protect your focus or enjoy intentional leisure, or log an obstacle when a distraction cue won.
+          </p>
+          <div id="guardrailsList" class="guardrails-list"></div>
+        </article>
+
+        <!-- Evidence Activity Feed Card -->
+        <article class="card feed-card">
+          <div class="card-header-row">
+            <div>
+              <h2 class="card-title" id="feedTitle">Evidence Log</h2>
+              <p class="card-subtitle">Actual completed actions and logged friction points</p>
+            </div>
+            <select id="feedIdentityFilter" class="select-sm" aria-label="Filter feed by identity">
+              <option value="all">All Identities</option>
+            </select>
+          </div>
+
+          <div id="evidenceFeedList" class="evidence-feed-list"></div>
+        </article>
+      </section>
+    </main>
+
+    <!-- ================================================================== -->
+    <!-- VIEW 2: WEEKLY REVIEW                                              -->
+    <!-- ================================================================== -->
+    <main id="view-review" class="view-panel" hidden>
+      <div class="review-layout">
+        <!-- Left Column: Auto-Compiled Behavioral Evidence -->
+        <section class="card review-evidence-panel">
+          <div class="card-header-row">
+            <div>
+              <h2 class="card-title">Auto-Compiled Weekly Evidence</h2>
+              <p class="card-subtitle" id="reviewWeekSub">Behavioral data aggregated automatically from your week's log</p>
+            </div>
+            <button type="button" id="prefillReviewBtn" class="btn-secondary" title="Populate reflection boxes with factual summaries from this week">
+              Auto-Fill Draft from Evidence
+            </button>
+          </div>
+
+          <div class="review-summary-blocks">
+            <div class="summary-block">
+              <h3 class="summary-heading">1. Identities Supported This Week</h3>
+              <div id="revSupportedList" class="summary-list"></div>
+            </div>
+
+            <div class="summary-block">
+              <h3 class="summary-heading">2. Unvoted / Quiet Identities (Information, Not Failure)</h3>
+              <div id="revNeglectedList" class="summary-list"></div>
+            </div>
+
+            <div class="summary-block">
+              <h3 class="summary-heading">3. Repeated Behaviors (2+ Votes This Week)</h3>
+              <div id="revRepeatedList" class="summary-list"></div>
+            </div>
+
+            <div class="summary-block">
+              <h3 class="summary-heading">4. Logged Obstacles &amp; Friction Cues</h3>
+              <div id="revObstaclesList" class="summary-list"></div>
+            </div>
+
+            <div class="summary-block">
+              <h3 class="summary-heading">5. Concrete Evidence Highlights</h3>
+              <div id="revHighlightsList" class="summary-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Column: Guided Reflection & Next Week Commitment -->
+        <section class="card review-form-panel">
+          <form id="weeklyReviewForm">
+            <div class="card-header-row">
+              <div>
+                <h2 class="card-title">Weekly Reflection &amp; Next Adjustment</h2>
+                <p class="card-subtitle">Review weekly, not obsessively every day</p>
+              </div>
+              <button type="submit" class="btn-primary">Save Weekly Review</button>
+            </div>
+
+            <div id="reviewQuestionsContainer" class="review-questions-stack"></div>
+
+            <div class="review-highlight-inputs">
+              <div class="form-group">
+                <label for="revOneAdjustment"><strong>Pinned Improvement for Next Week (Law 1 — Make It Obvious)</strong></label>
+                <input
+                  type="text"
+                  id="revOneAdjustment"
+                  class="input-main"
+                  placeholder="One specific environmental or routine adjustment for next week..."
+                />
+              </div>
+
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="revStrongestEvidence">Strongest Evidence Collected</label>
+                  <input
+                    type="text"
+                    id="revStrongestEvidence"
+                    class="input-main"
+                    placeholder="Best proof of my desired identity this week..."
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="revNextSmallestAction">Next Smallest Meaningful Action (2-Min Rule)</label>
+                  <input
+                    type="text"
+                    id="revNextSmallestAction"
+                    class="input-main"
+                    placeholder="My next 2-minute gateway action..."
+                  />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="revOverallStage">Overall Identity Maturity Stage</label>
+                <select id="revOverallStage" class="input-main"></select>
+              </div>
+            </div>
+
+            <div class="system-checks-box">
+              <h3 class="summary-heading">Evidence &amp; System Quality Audit</h3>
+              <div id="revSystemChecksGrid" class="system-checks-grid"></div>
+            </div>
+
+            <div class="form-footer">
+              <span id="reviewSaveStatus" class="save-status"></span>
+              <button type="submit" class="btn-primary">Save Weekly Review</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </main>
+
+    <!-- ================================================================== -->
+    <!-- VIEW 3: ATOMIC HABITS PLAYBOOK (EXTERNAL MARKDOWN GUIDANCE)        -->
+    <!-- ================================================================== -->
+    <main id="view-guidance" class="view-panel" hidden>
+      <div class="guidance-layout">
+        <aside class="card guidance-sidebar">
+          <div class="card-header-row">
+            <h2 class="card-title">Markdown Guides</h2>
+            <button type="button" id="newGuidanceDocBtn" class="btn-secondary">+ New .md</button>
+          </div>
+          <p class="card-subtitle">Stored as clean <code>.md</code> files in <code>guidance/</code> outside the database.</p>
+          <div id="guidanceDocList" class="guidance-doc-list"></div>
+        </aside>
+
+        <section class="card guidance-content-card">
+          <div class="card-header-row">
+            <div>
+              <span id="guidanceFileBadge" class="file-badge">guidance/four-laws.md</span>
+              <h2 id="guidanceDocTitle" class="card-title">Playbook</h2>
+            </div>
+            <div class="section-actions">
+              <button type="button" id="toggleEditGuidanceBtn" class="btn-secondary">Edit Markdown</button>
+              <button type="button" id="saveGuidanceBtn" class="btn-primary" hidden>Save .md File</button>
+            </div>
+          </div>
+
+          <article id="guidanceRenderedView" class="markdown-body"></article>
+
+          <div id="guidanceEditorWrap" class="guidance-editor-wrap" hidden>
+            <input type="text" id="guidanceIdInput" class="input-main" placeholder="Filename slug (e.g., my-habit-stack)" />
+            <textarea id="guidanceMarkdownTextarea" class="markdown-textarea" rows="22" placeholder="# Write Markdown guidance here..."></textarea>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- ================================================================== -->
+    <!-- VIEW 4: EXTEND & CONFIGURE SYSTEM                                  -->
+    <!-- ================================================================== -->
+    <main id="view-manage" class="view-panel" hidden>
+      <div class="manage-grid">
+        <section class="card">
+          <div class="card-header-row">
+            <div>
+              <h2 class="card-title">Manage Identities</h2>
+              <p class="card-subtitle">Add, rename, recolor, change maturity stage, or remove any identity</p>
+            </div>
+            <button type="button" id="manageAddIdentityBtn" class="btn-primary">+ Add Identity</button>
+          </div>
+          <div id="manageIdentitiesList" class="manage-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="card-header-row">
+            <div>
+              <h2 class="card-title">Customize Reflection Questions &amp; Principle</h2>
+              <p class="card-subtitle">Tailor your weekly review prompts and anti-identity philosophy</p>
+            </div>
+            <button type="button" id="saveSettingsBtn" class="btn-primary">Save Settings</button>
+          </div>
+
+          <div class="form-group">
+            <label for="settingAntiPrinciple"><strong>Core Anti-Identity Principle</strong></label>
+            <input type="text" id="settingAntiPrinciple" class="input-main" />
+          </div>
+
+          <div class="form-group">
+            <label for="settingQuestionsTextarea"><strong>Weekly Reflection Questions (one per line)</strong></label>
+            <textarea id="settingQuestionsTextarea" class="input-main" rows="6"></textarea>
+          </div>
+          <span id="settingsSaveStatus" class="save-status"></span>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: CREATE / EDIT IDENTITY                                        -->
+  <!-- ==================================================================== -->
+  <div id="identityModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="identityModalTitle">
+      <div class="card-header-row">
+        <h2 id="identityModalTitle" class="card-title">New Identity</h2>
+        <button type="button" class="icon-btn-sm" data-close-modal="identityModal">✕</button>
+      </div>
+      <form id="identityModalForm">
+        <input type="hidden" id="identModalId" />
+        <div class="form-group">
+          <label for="identModalName">Identity Name</label>
+          <input type="text" id="identModalName" class="input-main" placeholder="e.g., Open Source Maintainer, Athlete, Writer" required />
+        </div>
+        <div class="form-group">
+          <label for="identModalTagline">Core Belief / Tagline</label>
+          <input type="text" id="identModalTagline" class="input-main" placeholder="e.g., I ship clean code and help the community." />
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="identModalDomain">Life Domain</label>
+            <select id="identModalDomain" class="input-main">
+              <option value="work">Work / Craft</option>
+              <option value="growth">Curiosity / Social / Growth</option>
+              <option value="leisure">Balance / Rest / Leisure</option>
+              <option value="general">General</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="identModalStage">Current Stage</label>
+            <select id="identModalStage" class="input-main"></select>
+          </div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="identModalColorLight">Chart Color (Light Mode)</label>
+            <input type="color" id="identModalColorLight" class="color-input" value="#2a78d6" />
+          </div>
+          <div class="form-group">
+            <label for="identModalColorDark">Chart Color (Dark Mode)</label>
+            <input type="color" id="identModalColorDark" class="color-input" value="#3987e5" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" data-close-modal="identityModal">Cancel</button>
+          <button type="submit" class="btn-primary">Save Identity</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODAL: CREATE / EDIT HABIT OR GUARDRAIL                              -->
+  <!-- ==================================================================== -->
+  <div id="habitModal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="habitModalTitle">
+      <div class="card-header-row">
+        <h2 id="habitModalTitle" class="card-title">New Recurring Habit</h2>
+        <button type="button" class="icon-btn-sm" data-close-modal="habitModal">✕</button>
+      </div>
+      <form id="habitModalForm">
+        <input type="hidden" id="habitModalId" />
+        <div class="form-group">
+          <label for="habitModalTitleInput">Habit / Action Description</label>
+          <input type="text" id="habitModalTitleInput" class="input-main" placeholder="e.g., Wrote 200 words of technical notes" required />
+        </div>
+        <div class="form-group">
+          <label for="habitModalTwoMinInput">Two-Minute Rule Starter Version (Law 3 — Make It Easy)</label>
+          <input type="text" id="habitModalTwoMinInput" class="input-main" placeholder="e.g., Open notes file and write 1 sentence" />
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="habitModalCadence">Cadence</label>
+            <select id="habitModalCadence" class="input-main">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="anytime">Anytime</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="habitModalCategory">Type</label>
+            <select id="habitModalCategory" class="input-main">
+              <option value="identity_habit">Desired Identity Habit</option>
+              <option value="anti_identity_guard">Anti-Identity Guardrail</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Linked Identities (select 1 or more)</label>
+          <div id="habitModalIdentityPills" class="identity-pills-wrap"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" data-close-modal="habitModal">Cancel</button>
+          <button type="submit" class="btn-primary">Save Habit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
