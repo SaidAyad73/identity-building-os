@@ -81,6 +81,9 @@
             <button type="button" class="kind-btn active" data-kind="vote" title="Positive behavioral vote">
               + Identity Vote
             </button>
+            <button type="button" class="kind-btn" data-kind="devote" title="Remove/subtract a vote and record in logs">
+              − Devote
+            </button>
             <button type="button" class="kind-btn" data-kind="obstacle" title="Rule 4: Missing a habit is information, not a character verdict">
               ⚠ Log Obstacle / Friction
             </button>
@@ -422,6 +425,17 @@
             <textarea id="settingQuestionsTextarea" class="input-main" rows="6"></textarea>
           </div>
           <span id="settingsSaveStatus" class="save-status"></span>
+        </section>
+
+        <section class="card" style="grid-column: 1 / -1;">
+          <div class="card-header-row">
+            <div>
+              <h2 class="card-title">Manage Habits &amp; Anti-Identity Guardrails</h2>
+              <p class="card-subtitle">Edit or delete any recurring habit or guardrail (reflected immediately in database and logs)</p>
+            </div>
+            <button type="button" id="manageAddHabitBtn" class="btn-primary">+ Add Habit</button>
+          </div>
+          <div id="manageHabitsList" class="manage-list"></div>
         </section>
       </div>
     </main>

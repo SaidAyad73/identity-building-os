@@ -6,9 +6,8 @@ Based on Atomic Habits by James Clear.
 Zero hardcoded identities or habits:
 - Dynamically parses `base_database.md` (or any Markdown template) on initial bootstrap.
 - Provides full CRUD APIs for Identities, Habits, Anti-Identity Guardrails,
-  Daily Actions (Votes & Obstacles), Weekly Reviews, and Markdown Guidance files.
-- Dynamically discovers any `.md` file placed in `guidance/` and supports creating/editing
-  guidance Markdown files from the UI or filesystem.
+  Daily Actions (Votes, Devotes & Obstacles), Weekly Reviews, and Markdown Guidance files.
+- Stores full timestamps with day, month, year, hour, minute, and second in SQLite.
 """
 
 from __future__ import annotations
@@ -32,7 +31,6 @@ GUIDANCE_DIR = ROOT_DIR / "guidance"
 STATIC_DIR = ROOT_DIR / "static"
 
 # Validated categorical palette slots (from dataviz reference palette: light & dark pairs)
-# Used to automatically assign accessible, distinct colors as new identities are created.
 PALETTE_SLOTS = [
     {"light": "#2a78d6", "dark": "#3987e5"},  # Slot 1: Blue
     {"light": "#eb6834", "dark": "#d95926"},  # Slot 2: Orange
@@ -52,8 +50,51 @@ def slugify(text: str) -> str:
 
 def get_monday(date_str: str | None = None) -> dt.date:
     """Return the Monday date of the ISO week containing date_str (or today)."""
-    target = dt.date.fromisoformat(date_str) if date_str else dt.date.today()
+    if date_str:
+        clean_date = date_str.strip()[:10]
+        target = dt.date.fromisoformat(clean_date)
+    else:
+        target = dt.date.today()
     return target - dt.timedelta(days=target.weekday())
+
+
+def build_timestamp_fields(
+    action_date_str: str | None = None,
+    now_dt: dt.datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Build complete timestamp metadata with day, month, year, hour, minute, and second.
+    If action_date_str is provided (YYYY-MM-DD), combines that date with the current
+    (or provided) hour, minute, and second.
+    """
+    now = now_dt or dt.datetime.now()
+    if action_date_str:
+        try:
+            d_part = dt.date.fromisoformat(action_date_str.strip()[:10])
+        except ValueError:
+            d_part = now.date()
+    else:
+        d_part = now.date()
+
+    combined = dt.datetime(
+        d_part.year,
+        d_part.month,
+        d_part.day,
+        now.hour,
+        now.minute,
+        now.second,
+    )
+    return {
+        "action_date": combined.strftime("%Y-%m-%d"),
+        "action_time": combined.strftime("%H:%M:%S"),
+        "created_at": combined.strftime("%d/%m/%Y %H:%M:%S"),
+        "day": combined.day,
+        "month": combined.month,
+        "year": combined.year,
+        "hour": combined.hour,
+        "minute": combined.minute,
+        "second": combined.second,
+    }
 
 
 @contextlib.contextmanager
@@ -148,7 +189,6 @@ def parse_base_markdown(md_path: Path = BASE_MARKDOWN_PATH) -> dict[str, Any]:
                 current_identity_id = ident_id
             continue
 
-        # Parse checkboxes: - [ ] ...
         checkbox_match = re.match(r"^-\s*\[\s*[xX ]?\s*\]\s*(.+)$", line)
         if checkbox_match:
             item_text = checkbox_match.group(1).strip()
@@ -201,12 +241,10 @@ def parse_base_markdown(md_path: Path = BASE_MARKDOWN_PATH) -> dict[str, Any]:
                     )
             continue
 
-        # Parse Principle in Anti-Identity section
         if "anti-identity" in section and line.lower().startswith("**principle:**"):
             anti_principle = re.sub(r"^\*\*principle:\*\*\s*", "", line, flags=re.IGNORECASE).strip()
             continue
 
-        # Parse Examples in Weekly Evidence Log: - Action → Identity
         if "evidence log" in section and line.startswith("- ") and ("→" in line or "->" in line):
             parts = re.split(r"→|->", line[2:].strip(), maxsplit=1)
             if len(parts) == 2:
@@ -218,13 +256,11 @@ def parse_base_markdown(md_path: Path = BASE_MARKDOWN_PATH) -> dict[str, Any]:
                 )
             continue
 
-        # Parse Reflection Questions in Weekly Review
         if "weekly review" in section and subsection.lower() == "reflection":
             q_match = re.match(r"^\*\*(.+\?)\*\*$", line)
             if q_match:
                 reflection_questions.append(q_match.group(1).strip())
 
-    # Link anti-identity guardrails dynamically to matching identities (e.g., Balanced / Disciplined)
     fallback_ids = [
         i["id"]
         for i in identities
@@ -243,6 +279,23 @@ def parse_base_markdown(md_path: Path = BASE_MARKDOWN_PATH) -> dict[str, Any]:
         "stages": stages,
         "system_checks": system_checks,
     }
+
+
+def _ensure_action_time_columns(conn: sqlite3.Connection) -> None:
+    """Ensure existing databases have explicit day, month, year, hour, minute, second columns."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(actions)").fetchall()}
+    needed = [
+        ("action_time", "TEXT NOT NULL DEFAULT '00:00:00'"),
+        ("day", "INTEGER NOT NULL DEFAULT 1"),
+        ("month", "INTEGER NOT NULL DEFAULT 1"),
+        ("year", "INTEGER NOT NULL DEFAULT 2026"),
+        ("hour", "INTEGER NOT NULL DEFAULT 0"),
+        ("minute", "INTEGER NOT NULL DEFAULT 0"),
+        ("second", "INTEGER NOT NULL DEFAULT 0"),
+    ]
+    for col_name, col_def in needed:
+        if col_name not in cols:
+            conn.execute(f"ALTER TABLE actions ADD COLUMN {col_name} {col_def}")
 
 
 def init_db(
@@ -292,7 +345,14 @@ def init_db(
             CREATE TABLE IF NOT EXISTS actions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 action_date TEXT NOT NULL,
+                action_time TEXT NOT NULL DEFAULT '00:00:00',
                 created_at TEXT NOT NULL,
+                day INTEGER NOT NULL DEFAULT 1,
+                month INTEGER NOT NULL DEFAULT 1,
+                year INTEGER NOT NULL DEFAULT 2026,
+                hour INTEGER NOT NULL DEFAULT 0,
+                minute INTEGER NOT NULL DEFAULT 0,
+                second INTEGER NOT NULL DEFAULT 0,
                 title TEXT NOT NULL,
                 evidence_note TEXT NOT NULL DEFAULT '',
                 habit_id TEXT REFERENCES habits(id) ON DELETE SET NULL,
@@ -318,8 +378,8 @@ def init_db(
             );
             """
         )
+        _ensure_action_time_columns(conn)
 
-        # Store parsed metadata settings (stages, reflection questions, anti_principle, system_checks)
         existing_settings = conn.execute("SELECT COUNT(*) FROM settings").fetchone()[0]
         if existing_settings == 0:
             default_stages = parsed["stages"] or [
@@ -390,7 +450,6 @@ def init_db(
         if existing_actions == 0 and seed_examples and parsed["examples"] and parsed["identities"]:
             today = dt.date.today()
             monday = get_monday(today.isoformat())
-            now_iso = dt.datetime.now().isoformat(timespec="seconds")
             ident_rows = parsed["identities"]
 
             for idx, ex in enumerate(parsed["examples"]):
@@ -408,14 +467,26 @@ def init_db(
                     matched_ids = [ident_rows[0]["id"]]
 
                 action_date = min(monday + dt.timedelta(days=idx), today).isoformat()
+                ts = build_timestamp_fields(action_date)
                 cur = conn.execute(
                     """
-                    INSERT INTO actions (action_date, created_at, title, evidence_note, habit_id, kind, used_two_minute_rule)
-                    VALUES (?, ?, ?, ?, NULL, 'vote', 0)
+                    INSERT INTO actions (
+                        action_date, action_time, created_at,
+                        day, month, year, hour, minute, second,
+                        title, evidence_note, habit_id, kind, used_two_minute_rule
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'vote', 0)
                     """,
                     (
-                        action_date,
-                        now_iso,
+                        ts["action_date"],
+                        ts["action_time"],
+                        ts["created_at"],
+                        ts["day"],
+                        ts["month"],
+                        ts["year"],
+                        ts["hour"],
+                        ts["minute"],
+                        ts["second"],
                         ex["title"],
                         f"Imported from {md_path.name} example ({ex['identity_hint']})",
                     ),
@@ -444,13 +515,14 @@ def compute_identity_distribution(
     actions: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """
-    Compute fractional vote distribution across any set of active identities without double-counting.
+    Compute fractional vote distribution across active identities without double-counting,
+    accounting for both positive votes ('vote') and negative devotes ('devote').
 
-    Rule:
-    - Each 'vote' action has a total weight of 1.0.
-    - If an action supports k identities, each linked identity receives 1.0 / k weight.
-    - Sum of weighted_votes across all identities == total_votes (N),
-      and percentages sum to 100.0% whenever N > 0.
+    Rules:
+    - Each 'vote' action has a total weight of +1.0 (split 1/k across k linked identities).
+    - Each 'devote' action has a total weight of -1.0 (split -1/k across k linked identities).
+    - Net weight per identity is clamped at >= 0.0 for pie chart slice geometry so slices
+      remain valid and sum to 100% of positive net votes.
     """
     active_ids = {i["id"] for i in identities}
     vote_actions = [
@@ -459,12 +531,19 @@ def compute_identity_distribution(
         if a.get("kind", "vote") == "vote"
         and any(iid in active_ids for iid in a.get("identity_ids", []))
     ]
+    devote_actions = [
+        a
+        for a in actions
+        if a.get("kind") == "devote"
+        and any(iid in active_ids for iid in a.get("identity_ids", []))
+    ]
     obstacle_actions = [a for a in actions if a.get("kind") == "obstacle"]
-    total_votes = len(vote_actions)
+
     two_min_votes = sum(1 for a in vote_actions if a.get("used_two_minute_rule"))
 
     weights: dict[str, float] = {i["id"]: 0.0 for i in identities}
     touches: dict[str, int] = {i["id"]: 0 for i in identities}
+    devotes_per_ident: dict[str, int] = {i["id"]: 0 for i in identities}
 
     for action in vote_actions:
         linked = [iid for iid in action["identity_ids"] if iid in weights]
@@ -476,11 +555,22 @@ def compute_identity_distribution(
             weights[iid] += share
             touches[iid] += 1
 
+    for action in devote_actions:
+        linked = [iid for iid in action["identity_ids"] if iid in weights]
+        k = len(linked)
+        if k == 0:
+            continue
+        share = 1.0 / k
+        for iid in linked:
+            weights[iid] = max(0.0, weights[iid] - share)
+            devotes_per_ident[iid] += 1
+
+    net_total_weight = sum(weights.values())
     slices = []
     for idx, ident in enumerate(sorted(identities, key=lambda x: (x["sort_order"], x["name"])), start=1):
         iid = ident["id"]
         w = weights[iid]
-        pct = (w / total_votes * 100.0) if total_votes > 0 else 0.0
+        pct = (w / net_total_weight * 100.0) if net_total_weight > 0 else 0.0
         slices.append(
             {
                 "identity_id": iid,
@@ -493,12 +583,15 @@ def compute_identity_distribution(
                 "exact_weight": w,
                 "percentage": round(pct, 1),
                 "raw_touches": touches[iid],
+                "devote_count": devotes_per_ident[iid],
             }
         )
 
-    active_count = sum(1 for s in slices if s["raw_touches"] > 0)
+    active_count = sum(1 for s in slices if s["exact_weight"] > 0 or s["raw_touches"] > 0)
     return {
-        "total_votes": total_votes,
+        "total_votes": round(net_total_weight, 2) if net_total_weight % 1 else int(round(net_total_weight)),
+        "raw_vote_actions": len(vote_actions),
+        "total_devotes": len(devote_actions),
         "total_obstacles": len(obstacle_actions),
         "two_minute_votes": two_min_votes,
         "active_identities_count": active_count,
@@ -513,10 +606,12 @@ def fetch_actions_in_range(
 ) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT id, action_date, created_at, title, evidence_note, habit_id, kind, used_two_minute_rule
+        SELECT id, action_date, action_time, created_at,
+               day, month, year, hour, minute, second,
+               title, evidence_note, habit_id, kind, used_two_minute_rule
         FROM actions
         WHERE action_date >= ? AND action_date <= ?
-        ORDER BY action_date DESC, id DESC
+        ORDER BY action_date DESC, action_time DESC, id DESC
         """,
         (start_date, end_date),
     ).fetchall()
@@ -553,11 +648,21 @@ def fetch_actions_in_range(
     for r in rows:
         linked = links_by_action.get(r["id"], [])
         k = len(linked)
+        sign = 1.0 if r["kind"] == "vote" else (-1.0 if r["kind"] == "devote" else 0.0)
+        formatted_ts = f"{r['day']:02d}/{r['month']:02d}/{r['year']:04d} {r['hour']:02d}:{r['minute']:02d}:{r['second']:02d}"
         result.append(
             {
                 "id": r["id"],
                 "action_date": r["action_date"],
+                "action_time": r["action_time"],
                 "created_at": r["created_at"],
+                "timestamp_display": formatted_ts,
+                "day": r["day"],
+                "month": r["month"],
+                "year": r["year"],
+                "hour": r["hour"],
+                "minute": r["minute"],
+                "second": r["second"],
                 "title": r["title"],
                 "evidence_note": r["evidence_note"],
                 "habit_id": r["habit_id"],
@@ -565,7 +670,7 @@ def fetch_actions_in_range(
                 "used_two_minute_rule": bool(r["used_two_minute_rule"]),
                 "identity_ids": [item["id"] for item in linked],
                 "identities": linked,
-                "fractional_weight": round(1.0 / k, 2) if k > 0 and r["kind"] == "vote" else 0.0,
+                "fractional_weight": round(sign / k, 2) if k > 0 and sign != 0.0 else 0.0,
             }
         )
     return result
@@ -582,8 +687,8 @@ def build_weekly_auto_summary(
         key=lambda s: (s["exact_weight"], s["raw_touches"]),
         reverse=True,
     )
-    supported = [s for s in slices_by_weight if s["raw_touches"] > 0]
-    neglected = [s for s in distribution["slices"] if s["raw_touches"] == 0]
+    supported = [s for s in slices_by_weight if s["exact_weight"] > 0]
+    neglected = [s for s in distribution["slices"] if s["exact_weight"] == 0]
 
     counts: dict[str, dict[str, Any]] = {}
     for act in week_actions:
@@ -604,7 +709,7 @@ def build_weekly_auto_summary(
         reverse=True,
     )
 
-    obstacles = [a for a in week_actions if a["kind"] == "obstacle"]
+    obstacles = [a for a in week_actions if a["kind"] in ("obstacle", "devote")]
     vote_actions = [a for a in week_actions if a["kind"] == "vote"]
     strongest_candidates = [
         a
@@ -612,7 +717,6 @@ def build_weekly_auto_summary(
         if a["evidence_note"].strip() or len(a["identity_ids"]) > 1
     ][:6]
 
-    # Dynamic domain breakdown (work / growth / leisure / general)
     domain_weights: dict[str, float] = {}
     for s in distribution["slices"]:
         dom = s.get("domain", "general")
@@ -631,8 +735,10 @@ def build_weekly_auto_summary(
         parts = []
         if obstacles:
             parts.append(
-                "Logged obstacles: "
-                + "; ".join(f"{o['title']} ({o['evidence_note'] or o['action_date']})" for o in obstacles[:3])
+                "Logged devotes/obstacles: "
+                + "; ".join(
+                    f"{o['title']} ({o['timestamp_display']})" for o in obstacles[:3]
+                )
             )
         if neglected:
             parts.append("Unvoted identities this week: " + ", ".join(n["name"] for n in neglected))
@@ -666,6 +772,7 @@ def get_app_state(
     sunday_str = sunday_date.isoformat()
 
     with connect_db(db_path) as conn:
+        _ensure_action_time_columns(conn)
         settings = get_settings(conn)
         ident_rows = conn.execute(
             "SELECT * FROM identities WHERE archived = 0 ORDER BY sort_order ASC, name ASC"
@@ -693,8 +800,11 @@ def get_app_state(
 
         completed_on_date: dict[str, int] = {}
         for a in day_actions:
-            if a["habit_id"] and a["kind"] == "vote":
-                completed_on_date[a["habit_id"]] = completed_on_date.get(a["habit_id"], 0) + 1
+            if a["habit_id"]:
+                if a["kind"] == "vote":
+                    completed_on_date[a["habit_id"]] = completed_on_date.get(a["habit_id"], 0) + 1
+                elif a["kind"] == "devote":
+                    completed_on_date[a["habit_id"]] = max(0, completed_on_date.get(a["habit_id"], 0) - 1)
 
         habits = []
         for hr in habit_rows:
@@ -707,11 +817,12 @@ def get_app_state(
         week_slice_by_id = {s["identity_id"]: s for s in week_distribution["slices"]}
         for ident in identities:
             iid = ident["id"]
-            s_cur = slice_by_id.get(iid, {"weighted_votes": 0.0, "percentage": 0.0, "raw_touches": 0})
-            s_wk = week_slice_by_id.get(iid, {"weighted_votes": 0.0, "raw_touches": 0})
+            s_cur = slice_by_id.get(iid, {"weighted_votes": 0.0, "percentage": 0.0, "raw_touches": 0, "devote_count": 0})
+            s_wk = week_slice_by_id.get(iid, {"weighted_votes": 0.0, "raw_touches": 0, "devote_count": 0})
             ident["weighted_votes"] = s_cur["weighted_votes"]
             ident["percentage"] = s_cur["percentage"]
             ident["raw_touches"] = s_cur["raw_touches"]
+            ident["devote_count"] = s_cur.get("devote_count", 0)
             ident["week_weighted_votes"] = s_wk["weighted_votes"]
             ident["week_raw_touches"] = s_wk["raw_touches"]
             ident["recent_actions"] = [
@@ -733,6 +844,7 @@ def get_app_state(
             d_acts = by_date.get(d_iso, [])
             prev_acts = by_date.get(prev_iso, [])
             d_votes = [a for a in d_acts if a["kind"] == "vote"]
+            d_devotes = [a for a in d_acts if a["kind"] == "devote"]
             prev_votes = [a for a in prev_acts if a["kind"] == "vote"]
             d_obstacles = [a for a in d_acts if a["kind"] == "obstacle"]
 
@@ -742,6 +854,7 @@ def get_app_state(
                     if iid not in touched_ids:
                         touched_ids.append(iid)
 
+            net_day_votes = max(0, len(d_votes) - len(d_devotes))
             week_days.append(
                 {
                     "date": d_iso,
@@ -749,10 +862,11 @@ def get_app_state(
                     "day_num": d_obj.day,
                     "is_today": d_iso == today_str,
                     "is_selected": d_iso == sel_date,
-                    "vote_count": len(d_votes),
+                    "vote_count": net_day_votes,
+                    "devote_count": len(d_devotes),
                     "obstacle_count": len(d_obstacles),
                     "identities_touched": touched_ids,
-                    "never_miss_twice_recovered": len(prev_votes) == 0 and len(d_votes) > 0 and d_obj <= dt.date.today(),
+                    "never_miss_twice_recovered": len(prev_votes) == 0 and net_day_votes > 0 and d_obj <= dt.date.today(),
                 }
             )
 
@@ -762,6 +876,8 @@ def get_app_state(
             d_iso = d_obj.isoformat()
             d_acts = by_date.get(d_iso, [])
             d_votes = [a for a in d_acts if a["kind"] == "vote"]
+            d_devotes = [a for a in d_acts if a["kind"] == "devote"]
+            net_v = max(0, len(d_votes) - len(d_devotes))
             touched_ids = []
             for v in d_votes:
                 for iid in v["identity_ids"]:
@@ -770,7 +886,7 @@ def get_app_state(
             heatmap_28d.append(
                 {
                     "date": d_iso,
-                    "vote_count": len(d_votes),
+                    "vote_count": net_v,
                     "identities_touched": touched_ids,
                     "is_today": d_iso == today_str,
                     "is_selected": d_iso == sel_date,
@@ -794,7 +910,7 @@ def get_app_state(
         else:
             saved_review = {
                 "week_start": monday_str,
-                "review_date": today_str,
+                "review_date": dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
                 "answers": {},
                 "one_adjustment": "",
                 "strongest_evidence": "",
@@ -849,7 +965,7 @@ def get_app_state(
 
 
 # ---------------------------------------------------------------------------
-# Extendable CRUD Operations: Identities, Habits, Actions, Reviews, Guidance
+# Extendable CRUD Operations: Identities, Habits, Actions, Devote, Reviews
 # ---------------------------------------------------------------------------
 
 def create_identity(payload: dict[str, Any], db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
@@ -918,8 +1034,26 @@ def update_identity(
 
 
 def delete_identity(identity_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
+    """
+    Delete an identity from the database and clean up any habits or actions
+    that were exclusively linked to this identity so logs and charts reflect the deletion.
+    """
     with connect_db(db_path) as conn:
         conn.execute("DELETE FROM identities WHERE id = ?", (identity_id,))
+        # Remove habits that no longer have any linked identities
+        conn.execute(
+            """
+            DELETE FROM habits
+            WHERE id NOT IN (SELECT DISTINCT habit_id FROM habit_identities)
+            """
+        )
+        # Remove actions in logs that no longer have any linked identities
+        conn.execute(
+            """
+            DELETE FROM actions
+            WHERE id NOT IN (SELECT DISTINCT action_id FROM action_identities)
+            """
+        )
     return {"id": identity_id, "status": "deleted"}
 
 
@@ -993,7 +1127,12 @@ def update_habit(
 
 
 def delete_habit(habit_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
+    """
+    Delete a habit and remove its associated action logs from the database
+    so both the database and the logs reflect the habit deletion.
+    """
     with connect_db(db_path) as conn:
+        conn.execute("DELETE FROM actions WHERE habit_id = ?", (habit_id,))
         conn.execute("DELETE FROM habits WHERE id = ?", (habit_id,))
     return {"id": habit_id, "status": "deleted"}
 
@@ -1007,12 +1146,13 @@ def create_action(
     action_date = str(payload.get("action_date") or dt.date.today().isoformat()).strip()
     evidence_note = str(payload.get("evidence_note") or "").strip()
     kind = str(payload.get("kind") or "vote").strip()
-    if kind not in ("vote", "obstacle"):
+    if kind not in ("vote", "devote", "obstacle"):
         kind = "vote"
     used_two_min = 1 if payload.get("used_two_minute_rule") else 0
     identity_ids = list(payload.get("identity_ids") or [])
 
     with connect_db(db_path) as conn:
+        _ensure_action_time_columns(conn)
         if habit_id:
             h_row = conn.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)).fetchone()
             if h_row:
@@ -1039,13 +1179,32 @@ def create_action(
         if not clean_identity_ids:
             raise ValueError("At least one valid identity must be linked to an action.")
 
-        now_iso = dt.datetime.now().isoformat(timespec="seconds")
+        ts = build_timestamp_fields(action_date)
         cur = conn.execute(
             """
-            INSERT INTO actions (action_date, created_at, title, evidence_note, habit_id, kind, used_two_minute_rule)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO actions (
+                action_date, action_time, created_at,
+                day, month, year, hour, minute, second,
+                title, evidence_note, habit_id, kind, used_two_minute_rule
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (action_date, now_iso, title, evidence_note, habit_id, kind, used_two_min),
+            (
+                ts["action_date"],
+                ts["action_time"],
+                ts["created_at"],
+                ts["day"],
+                ts["month"],
+                ts["year"],
+                ts["hour"],
+                ts["minute"],
+                ts["second"],
+                title,
+                evidence_note,
+                habit_id,
+                kind,
+                used_two_min,
+            ),
         )
         action_id = cur.lastrowid
         for iid in clean_identity_ids:
@@ -1054,7 +1213,75 @@ def create_action(
                 (action_id, iid),
             )
 
-    return {"id": action_id, "status": "created"}
+    return {
+        "id": action_id,
+        "status": "created",
+        "kind": kind,
+        "timestamp": ts["created_at"],
+        "day": ts["day"],
+        "month": ts["month"],
+        "year": ts["year"],
+        "hour": ts["hour"],
+        "minute": ts["minute"],
+        "second": ts["second"],
+    }
+
+
+def devote_action(
+    payload: dict[str, Any],
+    db_path: Path = DEFAULT_DB_PATH,
+) -> dict[str, Any]:
+    """
+    Devote (remove/un-vote or record a negative devote) and reflect in database and logs:
+    - If `action_id` is passed: deletes that vote action from `actions` (or if `mode == 'log'`, converts/logs a devote).
+    - If `habit_id` is passed and there is an existing 'vote' for that habit on `action_date` (and `mode != 'log'`),
+      deletes the most recent vote row for that habit from the database so the vote count and logs immediately decrement.
+    - Otherwise, inserts a `kind = 'devote'` entry with full day/month/year/hour/min/sec timestamp into `actions`
+      so the devote is recorded in the database and logs and subtracts from the identity's vote total.
+    """
+    action_id = payload.get("action_id")
+    habit_id = payload.get("habit_id")
+    action_date = str(payload.get("action_date") or dt.date.today().isoformat()).strip()
+    mode = str(payload.get("mode") or "auto").strip()
+
+    with connect_db(db_path) as conn:
+        _ensure_action_time_columns(conn)
+
+        if action_id is not None:
+            conn.execute("DELETE FROM actions WHERE id = ?", (int(action_id),))
+            return {"action_id": int(action_id), "effect": "removed_vote", "status": "devoted"}
+
+        if habit_id and mode != "log":
+            latest_vote = conn.execute(
+                """
+                SELECT id, title FROM actions
+                WHERE habit_id = ? AND action_date = ? AND kind = 'vote'
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (habit_id, action_date[:10]),
+            ).fetchone()
+            if latest_vote:
+                conn.execute("DELETE FROM actions WHERE id = ?", (latest_vote["id"],))
+                return {
+                    "action_id": latest_vote["id"],
+                    "habit_id": habit_id,
+                    "effect": "removed_vote",
+                    "status": "devoted",
+                }
+
+    # If no existing vote to undo (or explicit log mode), record a 'devote' action in DB & logs
+    payload_copy = dict(payload)
+    payload_copy["kind"] = "devote"
+    if not payload_copy.get("title") and habit_id:
+        with connect_db(db_path) as conn:
+            h_row = conn.execute("SELECT title FROM habits WHERE id = ?", (habit_id,)).fetchone()
+            if h_row:
+                payload_copy["title"] = f"Devoted: {h_row['title']}"
+    res = create_action(payload_copy, db_path=db_path)
+    res["effect"] = "logged_devote"
+    res["status"] = "devoted"
+    return res
 
 
 def update_action(
@@ -1063,6 +1290,7 @@ def update_action(
     db_path: Path = DEFAULT_DB_PATH,
 ) -> dict[str, Any]:
     with connect_db(db_path) as conn:
+        _ensure_action_time_columns(conn)
         existing = conn.execute("SELECT * FROM actions WHERE id = ?", (action_id,)).fetchone()
         if not existing:
             raise KeyError(f"Action {action_id} not found.")
@@ -1073,7 +1301,7 @@ def update_action(
         action_date = str(payload.get("action_date", existing["action_date"])).strip()
         evidence_note = str(payload.get("evidence_note", existing["evidence_note"])).strip()
         kind = str(payload.get("kind", existing["kind"])).strip()
-        if kind not in ("vote", "obstacle"):
+        if kind not in ("vote", "devote", "obstacle"):
             kind = "vote"
         used_two_min = (
             1
@@ -1122,7 +1350,7 @@ def save_weekly_review(
 ) -> dict[str, Any]:
     raw_week = str(payload.get("week_start") or dt.date.today().isoformat()).strip()
     monday_str = get_monday(raw_week).isoformat()
-    review_date = str(payload.get("review_date") or dt.date.today().isoformat()).strip()
+    review_date = dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     answers = payload.get("answers") or {}
     one_adjustment = str(payload.get("one_adjustment") or "").strip()
     strongest_evidence = str(payload.get("strongest_evidence") or "").strip()
@@ -1158,7 +1386,7 @@ def save_weekly_review(
                 json.dumps(system_checks),
             ),
         )
-    return {"week_start": monday_str, "status": "saved"}
+    return {"week_start": monday_str, "review_date": review_date, "status": "saved"}
 
 
 def update_settings(payload: dict[str, Any], db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
@@ -1311,6 +1539,10 @@ class IdentityOSRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/actions":
                 res = create_action(payload, db_path=self.db_path)
                 self._send_json(res, status=201)
+                return
+            if path == "/api/actions/devote":
+                res = devote_action(payload, db_path=self.db_path)
+                self._send_json(res, status=200)
                 return
             if path == "/api/weekly-review":
                 res = save_weekly_review(payload, db_path=self.db_path)

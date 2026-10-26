@@ -65,7 +65,6 @@ async function loadState() {
   state.data = data;
   state.selectedDate = data.selected_date;
 
-  // Ensure capture identity selection remains valid or defaults to first identity
   const validIds = new Set(data.identities.map((i) => i.id));
   for (const id of Array.from(state.selectedCaptureIdentities)) {
     if (!validIds.has(id)) state.selectedCaptureIdentities.delete(id);
@@ -182,7 +181,9 @@ function renderDonutChart() {
   const rInner = 62;
 
   const activeSlices = chart.slices.filter((s) => s.exact_weight > 0);
-  if (chart.total_votes === 0 || activeSlices.length === 0) {
+  const totalPositiveWeight = activeSlices.reduce((acc, s) => acc + s.exact_weight, 0);
+
+  if (totalPositiveWeight <= 0 || activeSlices.length === 0) {
     const emptyCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     emptyCircle.setAttribute("cx", cx);
     emptyCircle.setAttribute("cy", cy);
@@ -194,7 +195,7 @@ function renderDonutChart() {
   } else {
     let currentAngle = 0;
     for (const slice of activeSlices) {
-      const sweep = (slice.exact_weight / chart.total_votes) * 360;
+      const sweep = (slice.exact_weight / totalPositiveWeight) * 360;
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("d", describeArcSlice(cx, cy, rOuter, rInner, currentAngle, currentAngle + sweep));
       path.setAttribute("fill", isDarkMode() ? slice.color_dark : slice.color_light);
@@ -204,7 +205,7 @@ function renderDonutChart() {
 
       path.addEventListener("mouseenter", () => {
         tooltip.hidden = false;
-        tooltip.innerHTML = `<strong>${escapeHtml(slice.name)}</strong>: ${slice.weighted_votes} weighted votes (${slice.percentage}%) • ${slice.raw_touches} actions`;
+        tooltip.innerHTML = `<strong>${escapeHtml(slice.name)}</strong>: ${slice.weighted_votes} net votes (${slice.percentage}%) • ${slice.raw_touches} votes${slice.devote_count ? ` / ${slice.devote_count} devotes` : ""}`;
       });
       path.addEventListener("mouseleave", () => {
         tooltip.hidden = true;
@@ -215,7 +216,6 @@ function renderDonutChart() {
     }
   }
 
-  // Center KPI Text
   const centerNum = document.createElementNS("http://www.w3.org/2000/svg", "text");
   centerNum.setAttribute("x", cx);
   centerNum.setAttribute("y", cy - 4);
@@ -232,13 +232,15 @@ function renderDonutChart() {
   centerSub.setAttribute("text-anchor", "middle");
   centerSub.setAttribute("fill", "var(--text-secondary)");
   centerSub.setAttribute("font-size", "11");
-  centerSub.textContent = state.scope === "day" ? "Votes on Day" : "Votes in Week";
+  centerSub.textContent = state.scope === "day" ? "Net Votes (Day)" : "Net Votes (Week)";
   svg.appendChild(centerSub);
 
-  // Companion Legend / Table (satisfies dataviz secondary encoding & relief rule)
   for (const slice of chart.slices) {
     const color = isDarkMode() ? slice.color_dark : slice.color_light;
     const tr = document.createElement("tr");
+    const actionSummary = slice.devote_count
+      ? `${slice.raw_touches}v / -${slice.devote_count}d`
+      : `${slice.raw_touches}`;
     tr.innerHTML = `
       <td>
         <div class="legend-ident-cell">
@@ -248,7 +250,7 @@ function renderDonutChart() {
       </td>
       <td class="num">${slice.weighted_votes}</td>
       <td class="num">${slice.percentage}%</td>
-      <td class="num">${slice.raw_touches}</td>
+      <td class="num">${actionSummary}</td>
     `;
     tbody.appendChild(tr);
   }
@@ -283,7 +285,7 @@ function renderCalendar() {
       <span class="day-name">${day.day_name}</span>
       <span class="day-num">${day.day_num}</span>
       <div class="day-dots">${dotsHtml}</div>
-      <span class="day-meta">${recoveryMark}${day.vote_count}v${day.obstacle_count ? ` · ${day.obstacle_count}!` : ""}</span>
+      <span class="day-meta">${recoveryMark}${day.vote_count}v${day.devote_count ? ` · -${day.devote_count}d` : ""}${day.obstacle_count ? ` · ${day.obstacle_count}!` : ""}</span>
     `;
     tile.addEventListener("click", () => {
       state.selectedDate = day.date;
@@ -298,7 +300,7 @@ function renderCalendar() {
     el.type = "button";
     const lvl = cell.vote_count === 0 ? 0 : cell.vote_count === 1 ? 1 : cell.vote_count <= 3 ? 2 : 3;
     el.className = `heat-cell level-${lvl} ${cell.is_selected ? "selected" : ""}`;
-    el.title = `${cell.date}: ${cell.vote_count} votes`;
+    el.title = `${cell.date}: ${cell.vote_count} net votes`;
     el.textContent = cell.date.slice(8);
     el.addEventListener("click", () => {
       state.selectedDate = cell.date;
@@ -309,7 +311,7 @@ function renderCalendar() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Extendable Identity Cards & 1-Click Habit Voting                           */
+/* Extendable Identity Cards, 1-Click Vote, Devote & Delete                   */
 /* -------------------------------------------------------------------------- */
 function renderIdentityCards() {
   const grid = document.getElementById("identityCardsGrid");
@@ -351,7 +353,11 @@ function renderIdentityCards() {
                   <button type="button" class="btn-vote-sm" data-quick-habit="${escapeHtml(h.id)}" data-ident="${escapeHtml(ident.id)}">
                     ${doneCount > 0 ? `✓ Voted (${doneCount})` : "+ Vote"}
                   </button>
+                  <button type="button" class="btn-devote-sm" title="Devote (undo today's vote or subtract a vote in logs)" data-devote-habit="${escapeHtml(h.id)}" data-ident="${escapeHtml(ident.id)}">
+                    − Devote
+                  </button>
                   <button type="button" class="icon-btn-sm" title="Edit habit" data-edit-habit="${escapeHtml(h.id)}">✎</button>
+                  <button type="button" class="icon-btn-sm" title="Delete habit" data-del-habit="${escapeHtml(h.id)}">✕</button>
                 </div>
               </div>
             `;
@@ -361,7 +367,7 @@ function renderIdentityCards() {
 
     const recentSnippet =
       ident.recent_actions && ident.recent_actions.length > 0
-        ? `Latest: “${escapeHtml(ident.recent_actions[0].title)}” (${ident.recent_actions[0].action_date})`
+        ? `Latest: “${escapeHtml(ident.recent_actions[0].title)}” (${ident.recent_actions[0].timestamp_display || ident.recent_actions[0].created_at})`
         : "No votes in current view yet";
 
     card.innerHTML = `
@@ -375,7 +381,7 @@ function renderIdentityCards() {
             <p class="ident-tagline">${escapeHtml(ident.tagline)}</p>
           </div>
           <div class="ident-stats-badges">
-            <span class="vote-count-badge" title="Weighted votes / Raw actions">${ident.weighted_votes}v · ${ident.percentage}%</span>
+            <span class="vote-count-badge" title="Net weighted votes / Share">${ident.weighted_votes}v · ${ident.percentage}%</span>
             <select class="stage-select-inline" data-stage-ident="${escapeHtml(ident.id)}" aria-label="Maturity stage for ${escapeHtml(ident.name)}">
               ${stageOptions}
             </select>
@@ -389,9 +395,10 @@ function renderIdentityCards() {
 
       <div class="ident-card-footer">
         <span>${recentSnippet}</span>
-        <div>
+        <div style="display:flex;gap:8px;align-items:center;">
           <button type="button" class="btn-link" data-add-habit-for="${escapeHtml(ident.id)}">+ Habit</button>
           <button type="button" class="btn-link" data-edit-ident="${escapeHtml(ident.id)}">Edit</button>
+          <button type="button" class="btn-danger-link" data-del-ident="${escapeHtml(ident.id)}">Delete</button>
         </div>
       </div>
     `;
@@ -407,7 +414,7 @@ function renderIdentityCards() {
       if (!habit) return;
       const useTwoMin = state.twoMinuteMode;
       const title = useTwoMin && habit.two_minute_version ? habit.two_minute_version : habit.title;
-      await api("/api/actions", {
+      const res = await api("/api/actions", {
         method: "POST",
         body: JSON.stringify({
           habit_id: habit.id,
@@ -418,7 +425,52 @@ function renderIdentityCards() {
           kind: "vote",
         }),
       });
-      showToast(`Vote cast: ${title}`);
+      showToast(`Vote cast (${res.timestamp}): ${title}`);
+      await loadState();
+    });
+  });
+
+  // Bind 1-click habit devote buttons
+  grid.querySelectorAll("[data-devote-habit]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const habitId = btn.dataset.devoteHabit;
+      const habit = state.data.habits.find((h) => h.id === habitId);
+      if (!habit) return;
+      const res = await api("/api/actions/devote", {
+        method: "POST",
+        body: JSON.stringify({
+          habit_id: habit.id,
+          action_date: state.selectedDate,
+          identity_ids: habit.identity_ids,
+        }),
+      });
+      if (res.effect === "removed_vote") {
+        showToast(`Devoted: Removed vote for "${habit.title}" from DB & logs`);
+      } else {
+        showToast(`Devoted (${res.timestamp}): Logged -1 vote for "${habit.title}"`);
+      }
+      await loadState();
+    });
+  });
+
+  // Bind delete habit buttons
+  grid.querySelectorAll("[data-del-habit]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const habit = state.data.habits.find((h) => h.id === btn.dataset.delHabit);
+      if (!habit) return;
+      await api(`/api/habits/${encodeURIComponent(habit.id)}`, { method: "DELETE" });
+      showToast(`Deleted habit "${habit.title}" from DB & logs`);
+      await loadState();
+    });
+  });
+
+  // Bind delete identity buttons
+  grid.querySelectorAll("[data-del-ident]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const ident = state.data.identities.find((i) => i.id === btn.dataset.delIdent);
+      if (!ident) return;
+      await api(`/api/identities/${encodeURIComponent(ident.id)}`, { method: "DELETE" });
+      showToast(`Deleted identity "${ident.name}" from DB & logs`);
       await loadState();
     });
   });
@@ -479,8 +531,12 @@ function renderGuardrailsAndFeed() {
         <button type="button" class="btn-vote-sm" data-guard-vote="${escapeHtml(g.id)}">
           ${done > 0 ? `✓ Held (${done})` : "+ Held Boundary"}
         </button>
+        <button type="button" class="btn-devote-sm" title="Devote guardrail" data-guard-devote="${escapeHtml(g.id)}">
+          − Devote
+        </button>
         <button type="button" class="icon-btn-sm" title="Log slip/obstacle for this guardrail" data-guard-slip="${escapeHtml(g.id)}">⚠</button>
         <button type="button" class="icon-btn-sm" title="Edit guardrail" data-edit-guard="${escapeHtml(g.id)}">✎</button>
+        <button type="button" class="icon-btn-sm" title="Delete guardrail" data-del-guard="${escapeHtml(g.id)}">✕</button>
       </div>
     `;
     guardList.appendChild(item);
@@ -490,7 +546,7 @@ function renderGuardrailsAndFeed() {
     btn.addEventListener("click", async () => {
       const g = guardrails.find((x) => x.id === btn.dataset.guardVote);
       if (!g) return;
-      await api("/api/actions", {
+      const res = await api("/api/actions", {
         method: "POST",
         body: JSON.stringify({
           habit_id: g.id,
@@ -501,7 +557,24 @@ function renderGuardrailsAndFeed() {
           kind: "vote",
         }),
       });
-      showToast("Boundary win recorded!");
+      showToast(`Boundary win recorded (${res.timestamp})`);
+      await loadState();
+    });
+  });
+
+  guardList.querySelectorAll("[data-guard-devote]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const g = guardrails.find((x) => x.id === btn.dataset.guardDevote);
+      if (!g) return;
+      await api("/api/actions/devote", {
+        method: "POST",
+        body: JSON.stringify({
+          habit_id: g.id,
+          action_date: state.selectedDate,
+          identity_ids: g.identity_ids,
+        }),
+      });
+      showToast(`Devoted guardrail: ${g.title}`);
       await loadState();
     });
   });
@@ -534,6 +607,16 @@ function renderGuardrailsAndFeed() {
     });
   });
 
+  guardList.querySelectorAll("[data-del-guard]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const g = guardrails.find((x) => x.id === btn.dataset.delGuard);
+      if (!g) return;
+      await api(`/api/habits/${encodeURIComponent(g.id)}`, { method: "DELETE" });
+      showToast(`Deleted guardrail "${g.title}"`);
+      await loadState();
+    });
+  });
+
   // Populate Feed Filter
   const filterSelect = document.getElementById("feedIdentityFilter");
   const prevVal = state.feedFilter;
@@ -546,7 +629,7 @@ function renderGuardrailsAndFeed() {
   }
   filterSelect.value = identities.some((i) => i.id === prevVal) ? prevVal : "all";
 
-  // Render Evidence Feed
+  // Render Evidence Feed with Full Timestamp (DD/MM/YYYY HH:MM:SS)
   const feedEl = document.getElementById("evidenceFeedList");
   feedEl.innerHTML = "";
   const filtered =
@@ -561,7 +644,8 @@ function renderGuardrailsAndFeed() {
 
   for (const act of filtered) {
     const row = document.createElement("div");
-    row.className = `feed-item ${act.kind === "obstacle" ? "obstacle" : ""}`;
+    const kindClass = act.kind === "obstacle" ? "obstacle" : act.kind === "devote" ? "devote" : "";
+    row.className = `feed-item ${kindClass}`;
     const badges = act.identities
       .map(
         (idObj) =>
@@ -569,33 +653,58 @@ function renderGuardrailsAndFeed() {
       )
       .join("");
     const weightBadge =
-      act.kind === "vote" && act.identities.length > 1
-        ? `<span class="mini-badge">${act.fractional_weight} wt each</span>`
+      (act.kind === "vote" || act.kind === "devote") && act.identities.length >= 1
+        ? `<span class="mini-badge">${act.fractional_weight > 0 ? `+${act.fractional_weight}` : act.fractional_weight} wt</span>`
         : "";
     const twoMinBadge = act.used_two_minute_rule ? `<span class="mini-badge">⚡ 2-Min Rule</span>` : "";
-    const kindBadge = act.kind === "obstacle" ? `<span class="mini-badge" style="color:var(--warn)">⚠ Obstacle</span>` : "";
+    const kindBadge =
+      act.kind === "obstacle"
+        ? `<span class="mini-badge" style="color:var(--warn)">⚠ Obstacle</span>`
+        : act.kind === "devote"
+        ? `<span class="mini-badge" style="color:var(--danger)">− Devote</span>`
+        : `<span class="mini-badge" style="color:var(--good)">+ Vote</span>`;
+
+    const fullTimestamp = act.timestamp_display || act.created_at || `${act.action_date} ${act.action_time || ""}`;
 
     row.innerHTML = `
       <div>
         <div class="feed-item-title">${escapeHtml(act.title)}</div>
         ${act.evidence_note ? `<div class="feed-item-note">${escapeHtml(act.evidence_note)}</div>` : ""}
         <div class="feed-item-meta">
-          <span class="mini-badge">${act.action_date}</span>
+          <span class="mini-badge" title="Day/Month/Year Hour:Minute:Second">🕒 ${escapeHtml(fullTimestamp)}</span>
           ${kindBadge}
           ${twoMinBadge}
           ${badges}
           ${weightBadge}
         </div>
       </div>
-      <button type="button" class="icon-btn-sm" title="Delete entry" data-del-action="${act.id}">✕</button>
+      <div class="habit-actions">
+        ${
+          act.kind === "vote"
+            ? `<button type="button" class="btn-devote-sm" title="Devote / remove this vote from DB & logs" data-devote-action="${act.id}">− Devote</button>`
+            : ""
+        }
+        <button type="button" class="icon-btn-sm" title="Delete log entry" data-del-action="${act.id}">✕</button>
+      </div>
     `;
     feedEl.appendChild(row);
   }
 
+  feedEl.querySelectorAll("[data-devote-action]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await api("/api/actions/devote", {
+        method: "POST",
+        body: JSON.stringify({ action_id: Number(btn.dataset.devoteAction) }),
+      });
+      showToast("Vote devoted & removed from database and logs");
+      await loadState();
+    });
+  });
+
   feedEl.querySelectorAll("[data-del-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await api(`/api/actions/${btn.dataset.delAction}`, { method: "DELETE" });
-      showToast("Deleted entry");
+      showToast("Deleted entry from database and logs");
       await loadState();
     });
   });
@@ -610,26 +719,23 @@ function renderWeeklyReview() {
 
   document.getElementById("reviewWeekSub").textContent = `Week of ${week_start} to ${week_end}`;
 
-  // 1. Supported Identities
   const supEl = document.getElementById("revSupportedList");
   supEl.innerHTML = auto_summary.supported_identities.length
     ? auto_summary.supported_identities
         .map(
           (s) =>
-            `<div><strong>${escapeHtml(s.name)}</strong>: ${s.weighted_votes} weighted votes (${s.percentage}%) across ${s.raw_touches} actions</div>`
+            `<div><strong>${escapeHtml(s.name)}</strong>: ${s.weighted_votes} net votes (${s.percentage}%) across ${s.raw_touches} actions</div>`
         )
         .join("")
-    : `<div class="card-subtitle">No votes recorded this week yet.</div>`;
+    : `<div class="card-subtitle">No net votes recorded this week yet.</div>`;
 
-  // 2. Neglected Identities
   const negEl = document.getElementById("revNeglectedList");
   negEl.innerHTML = auto_summary.neglected_identities.length
     ? auto_summary.neglected_identities
-        .map((n) => `<div>• ${escapeHtml(n.name)} (0 votes this week)</div>`)
+        .map((n) => `<div>• ${escapeHtml(n.name)} (0 net votes this week)</div>`)
         .join("")
-    : `<div>All active identities received at least 1 vote this week!</div>`;
+    : `<div>All active identities received positive net votes this week!</div>`;
 
-  // 3. Repeated Behaviors
   const repEl = document.getElementById("revRepeatedList");
   repEl.innerHTML = auto_summary.repeated_behaviors.length
     ? auto_summary.repeated_behaviors
@@ -637,29 +743,26 @@ function renderWeeklyReview() {
         .join("")
     : `<div class="card-subtitle">No single behavior repeated 2+ times yet this week.</div>`;
 
-  // 4. Obstacles
   const obsEl = document.getElementById("revObstaclesList");
   obsEl.innerHTML = auto_summary.obstacles.length
     ? auto_summary.obstacles
         .map(
           (o) =>
-            `<div>⚠ <strong>${escapeHtml(o.title)}</strong> (${o.action_date}) ${o.evidence_note ? `— ${escapeHtml(o.evidence_note)}` : ""}</div>`
+            `<div>${o.kind === "devote" ? "−" : "⚠"} <strong>${escapeHtml(o.title)}</strong> (${escapeHtml(o.timestamp_display || o.action_date)}) ${o.evidence_note ? `— ${escapeHtml(o.evidence_note)}` : ""}</div>`
         )
         .join("")
-    : `<div>No obstacles or anti-identity slips logged this week.</div>`;
+    : `<div>No devotes or obstacles logged this week.</div>`;
 
-  // 5. Highlights
   const highEl = document.getElementById("revHighlightsList");
   highEl.innerHTML = auto_summary.strongest_candidates.length
     ? auto_summary.strongest_candidates
         .map(
           (c) =>
-            `<div>★ <strong>${escapeHtml(c.title)}</strong> ${c.evidence_note ? `— <em>${escapeHtml(c.evidence_note)}</em>` : ""}</div>`
+            `<div>★ <strong>${escapeHtml(c.title)}</strong> (${escapeHtml(c.timestamp_display || c.action_date)}) ${c.evidence_note ? `— <em>${escapeHtml(c.evidence_note)}</em>` : ""}</div>`
         )
         .join("")
     : `<div class="card-subtitle">Add an evidence note when logging actions to highlight breakthroughs here.</div>`;
 
-  // Dynamic Reflection Questions
   const qContainer = document.getElementById("reviewQuestionsContainer");
   qContainer.innerHTML = "";
   const questions = settings.reflection_questions || [];
@@ -690,7 +793,6 @@ function renderWeeklyReview() {
     )
     .join("");
 
-  // System Checks
   const checksGrid = document.getElementById("revSystemChecksGrid");
   checksGrid.innerHTML = "";
   const sysChecks = settings.system_checks || [];
@@ -855,12 +957,12 @@ function renderGuidanceView() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Extend & Configure View                                                    */
+/* Extend & Configure View (Identities, Habits & Settings)                    */
 /* -------------------------------------------------------------------------- */
 function renderManageView() {
   const listEl = document.getElementById("manageIdentitiesList");
   listEl.innerHTML = "";
-  const { identities, settings } = state.data;
+  const { identities, habits, settings } = state.data;
 
   for (const ident of identities) {
     const row = document.createElement("div");
@@ -875,7 +977,7 @@ function renderManageView() {
       </div>
       <div class="habit-actions">
         <button type="button" class="btn-secondary" data-mgr-edit="${escapeHtml(ident.id)}">Edit</button>
-        <button type="button" class="icon-btn-sm" title="Delete identity" data-mgr-del="${escapeHtml(ident.id)}">✕</button>
+        <button type="button" class="btn-devote-sm" title="Delete identity" data-mgr-del="${escapeHtml(ident.id)}">Delete</button>
       </div>
     `;
     listEl.appendChild(row);
@@ -892,12 +994,54 @@ function renderManageView() {
     btn.addEventListener("click", async () => {
       const ident = identities.find((i) => i.id === btn.dataset.mgrDel);
       if (!ident) return;
-      if (!window.confirm(`Delete identity "${ident.name}"?`)) return;
       await api(`/api/identities/${encodeURIComponent(ident.id)}`, { method: "DELETE" });
-      showToast(`Deleted ${ident.name}`);
+      showToast(`Deleted identity "${ident.name}"`);
       await loadState();
     });
   });
+
+  const habitsListEl = document.getElementById("manageHabitsList");
+  if (habitsListEl) {
+    habitsListEl.innerHTML = "";
+    const identMap = Object.fromEntries(identities.map((i) => [i.id, i.name]));
+    for (const h of habits) {
+      const row = document.createElement("div");
+      row.className = "manage-row";
+      const linkedNames = (h.identity_ids || []).map((id) => identMap[id] || id).join(", ");
+      row.innerHTML = `
+        <div>
+          <strong>${escapeHtml(h.title)}</strong>
+          <div class="card-subtitle">
+            ${escapeHtml(h.category === "anti_identity_guard" ? "Anti-Identity Guardrail" : "Habit")}
+            · ${escapeHtml(h.cadence)}
+            · Linked: ${escapeHtml(linkedNames)}
+          </div>
+        </div>
+        <div class="habit-actions">
+          <button type="button" class="btn-secondary" data-mgr-habit-edit="${escapeHtml(h.id)}">Edit</button>
+          <button type="button" class="btn-devote-sm" title="Delete habit" data-mgr-habit-del="${escapeHtml(h.id)}">Delete</button>
+        </div>
+      `;
+      habitsListEl.appendChild(row);
+    }
+
+    habitsListEl.querySelectorAll("[data-mgr-habit-edit]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const h = habits.find((x) => x.id === btn.dataset.mgrHabitEdit);
+        if (h) openHabitModal(h);
+      });
+    });
+
+    habitsListEl.querySelectorAll("[data-mgr-habit-del]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const h = habits.find((x) => x.id === btn.dataset.mgrHabitDel);
+        if (!h) return;
+        await api(`/api/habits/${encodeURIComponent(h.id)}`, { method: "DELETE" });
+        showToast(`Deleted "${h.title}"`);
+        await loadState();
+      });
+    });
+  }
 
   document.getElementById("settingAntiPrinciple").value = settings.anti_principle || "";
   document.getElementById("settingQuestionsTextarea").value = (settings.reflection_questions || []).join("\n");
@@ -981,7 +1125,6 @@ function switchView(viewName) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  // View navigation
   document.querySelectorAll(".nav-tab").forEach((btn) => {
     btn.addEventListener("click", () => switchView(btn.dataset.view));
   });
@@ -989,7 +1132,6 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => switchView(btn.dataset.jumpView));
   });
 
-  // Two-Minute Mode toggle
   document.getElementById("twoMinModeBtn").addEventListener("click", (e) => {
     state.twoMinuteMode = !state.twoMinuteMode;
     e.currentTarget.classList.toggle("active", state.twoMinuteMode);
@@ -998,14 +1140,12 @@ document.addEventListener("DOMContentLoaded", () => {
     renderGuardrailsAndFeed();
   });
 
-  // Theme toggle
   document.getElementById("themeToggleBtn").addEventListener("click", () => {
     const next = isDarkMode() ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
     renderAll();
   });
 
-  // Scope & Date navigation
   document.querySelectorAll(".scope-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.scope = btn.dataset.scope;
@@ -1031,13 +1171,19 @@ document.addEventListener("DOMContentLoaded", () => {
     loadState();
   });
 
-  // Quick-Capture kind switch (vote vs obstacle)
+  // Quick-Capture kind switch (vote vs devote vs obstacle)
   document.querySelectorAll(".kind-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.captureKind = btn.dataset.kind;
       document.querySelectorAll(".kind-btn").forEach((b) => b.classList.toggle("active", b === btn));
-      document.getElementById("submitActionBtn").textContent =
-        state.captureKind === "obstacle" ? "Log Obstacle" : "Cast Vote";
+      const submitBtn = document.getElementById("submitActionBtn");
+      if (state.captureKind === "obstacle") {
+        submitBtn.textContent = "Log Obstacle";
+      } else if (state.captureKind === "devote") {
+        submitBtn.textContent = "Cast Devote (−1)";
+      } else {
+        submitBtn.textContent = "Cast Vote";
+      }
     });
   });
 
@@ -1048,7 +1194,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const noteEl = document.getElementById("actionEvidenceInput");
     const twoMinEl = document.getElementById("actionTwoMinCheck");
 
-    await api("/api/actions", {
+    const res = await api("/api/actions", {
       method: "POST",
       body: JSON.stringify({
         title: titleEl.value,
@@ -1062,20 +1208,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
     titleEl.value = "";
     noteEl.value = "";
-    showToast(state.captureKind === "obstacle" ? "Obstacle logged" : "Identity vote cast!");
+    showToast(
+      state.captureKind === "obstacle"
+        ? `Obstacle logged (${res.timestamp})`
+        : state.captureKind === "devote"
+        ? `Devote logged (${res.timestamp})`
+        : `Identity vote cast (${res.timestamp})!`
+    );
     await loadState();
   });
 
-  // Feed Filter
   document.getElementById("feedIdentityFilter").addEventListener("change", (e) => {
     state.feedFilter = e.target.value;
     renderGuardrailsAndFeed();
   });
 
-  // Modals open/close
   document.getElementById("openNewIdentityModalBtn").addEventListener("click", () => openIdentityModal(null));
   document.getElementById("manageAddIdentityBtn").addEventListener("click", () => openIdentityModal(null));
   document.getElementById("openNewHabitModalBtn").addEventListener("click", () => openHabitModal(null));
+  const mgrAddHabitBtn = document.getElementById("manageAddHabitBtn");
+  if (mgrAddHabitBtn) {
+    mgrAddHabitBtn.addEventListener("click", () => openHabitModal(null));
+  }
   document.getElementById("addGuardrailBtn").addEventListener("click", () =>
     openHabitModal(null, [], "anti_identity_guard")
   );
@@ -1086,7 +1240,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Identity Modal Form Submit
   document.getElementById("identityModalForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("identModalId").value;
@@ -1109,7 +1262,6 @@ document.addEventListener("DOMContentLoaded", () => {
     await loadState();
   });
 
-  // Habit Modal Form Submit
   document.getElementById("habitModalForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("habitModalId").value;
@@ -1131,7 +1283,6 @@ document.addEventListener("DOMContentLoaded", () => {
     await loadState();
   });
 
-  // Auto-Fill Weekly Review Draft
   document.getElementById("prefillReviewBtn").addEventListener("click", () => {
     const { auto_summary } = state.data.weekly_review;
     const textareas = document.querySelectorAll("[data-review-question]");
@@ -1148,7 +1299,6 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast("Pre-filled reflection fields from this week's evidence");
   });
 
-  // Weekly Review Save
   document.getElementById("weeklyReviewForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const answers = {};
@@ -1160,11 +1310,10 @@ document.addEventListener("DOMContentLoaded", () => {
       checks[chk.dataset.sysCheck] = chk.checked;
     });
 
-    await api("/api/weekly-review", {
+    const res = await api("/api/weekly-review", {
       method: "POST",
       body: JSON.stringify({
         week_start: state.data.week_start,
-        review_date: state.data.today,
         answers,
         one_adjustment: document.getElementById("revOneAdjustment").value,
         strongest_evidence: document.getElementById("revStrongestEvidence").value,
@@ -1173,12 +1322,11 @@ document.addEventListener("DOMContentLoaded", () => {
         system_checks: checks,
       }),
     });
-    document.getElementById("reviewSaveStatus").textContent = "✓ Saved & pinned to Dashboard";
+    document.getElementById("reviewSaveStatus").textContent = `✓ Saved (${res.review_date}) & pinned to Dashboard`;
     showToast("Weekly review saved!");
     await loadState();
   });
 
-  // Guidance Editor Controls
   document.getElementById("newGuidanceDocBtn").addEventListener("click", () => {
     state.activeGuidanceId = null;
     state.editingGuidance = true;
@@ -1201,7 +1349,6 @@ document.addEventListener("DOMContentLoaded", () => {
     await loadGuidance();
   });
 
-  // Settings Save
   document.getElementById("saveSettingsBtn").addEventListener("click", async () => {
     const antiPrinciple = document.getElementById("settingAntiPrinciple").value.trim();
     const questions = document

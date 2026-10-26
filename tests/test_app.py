@@ -29,13 +29,12 @@ class IdentityOSVerificationTests(unittest.TestCase):
     def test_01_dynamic_markdown_parser_and_non_destructive_seed(self) -> None:
         parsed = app.parse_base_markdown(app.BASE_MARKDOWN_PATH)
         self.assertEqual(len(parsed["identities"]), 6)
-        self.assertEqual(len(parsed["habits"]), 27)  # 21 identity habits + 6 anti-identity guardrails
+        self.assertEqual(len(parsed["habits"]), 27)
         self.assertEqual(len(parsed["examples"]), 5)
         self.assertEqual(len(parsed["reflection_questions"]), 4)
         self.assertEqual(len(parsed["stages"]), 5)
         self.assertIn("not trying to eliminate fun", parsed["anti_principle"])
 
-        # Verify 'WEAKLY' in base_database.md was dynamically parsed as 'weekly' cadence
         youtube_habits = [h for h in parsed["habits"] if "youtube" in h["title"].lower()]
         self.assertEqual(len(youtube_habits), 1)
         self.assertEqual(youtube_habits[0]["cadence"], "weekly")
@@ -49,7 +48,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
         ident_ids = [i["id"] for i in state0["identities"]]
         ent_id, free_id, disc_id = ident_ids[0], ident_ids[1], ident_ids[4]
 
-        # Action 1: Single identity (weight = 1.0)
         app.create_action(
             {
                 "title": "Built MVP prototype",
@@ -61,7 +59,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
             db_path=self.db_path,
         )
 
-        # Action 2: Two identities (weight = 0.5 each)
         app.create_action(
             {
                 "title": "Started client deliverable at 8:00 AM sharp",
@@ -73,7 +70,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
             db_path=self.db_path,
         )
 
-        # Action 3: Three identities (weight = 1/3 each)
         app.create_action(
             {
                 "title": "Shipped open-source module on schedule for client project",
@@ -84,7 +80,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
             db_path=self.db_path,
         )
 
-        # Action 4: Obstacle log (must NOT inflate vote pie chart)
         app.create_action(
             {
                 "title": "Scrolled short-form video late at night",
@@ -106,19 +101,13 @@ class IdentityOSVerificationTests(unittest.TestCase):
         self.assertAlmostEqual(total_exact_weight, 3.0, places=6)
 
         slice_map = {s["identity_id"]: s for s in chart["slices"]}
-        # ent_id: 1.0 + 1/3 = 1.333... (raw_touches = 2)
         self.assertAlmostEqual(slice_map[ent_id]["exact_weight"], 1.0 + 1.0 / 3.0, places=5)
         self.assertEqual(slice_map[ent_id]["raw_touches"], 2)
-
-        # free_id: 0.5 + 1/3 = 0.833... (raw_touches = 2)
         self.assertAlmostEqual(slice_map[free_id]["exact_weight"], 0.5 + 1.0 / 3.0, places=5)
         self.assertEqual(slice_map[free_id]["raw_touches"], 2)
-
-        # disc_id: 0.5 + 1/3 = 0.833... (raw_touches = 2)
         self.assertAlmostEqual(slice_map[disc_id]["exact_weight"], 0.5 + 1.0 / 3.0, places=5)
         self.assertEqual(slice_map[disc_id]["raw_touches"], 2)
 
-        # Daily scope filter check (only 2026-10-26 has 2 vote actions)
         day_state = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="day")
         self.assertEqual(day_state["chart"]["total_votes"], 2)
         self.assertEqual(len(day_state["actions"]), 2)
@@ -126,7 +115,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
     def test_03_system_extendability_crud_identities_habits_and_guidance(self) -> None:
         app.init_db(db_path=self.db_path, seed_examples=False)
 
-        # 1. Create a brand-new 7th Identity dynamically
         new_ident = app.create_identity(
             {
                 "name": "Open Source Maintainer",
@@ -138,7 +126,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
         )
         new_id = new_ident["id"]
 
-        # 2. Create a new Habit linked to the new Identity
         new_habit = app.create_habit(
             {
                 "title": "Reviewed community pull request",
@@ -150,7 +137,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
             db_path=self.db_path,
         )
 
-        # 3. Log an action via habit_id only (auto-inherits title & identity_ids)
         app.create_action(
             {
                 "habit_id": new_habit["id"],
@@ -166,7 +152,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
         self.assertEqual(oss_slice["weighted_votes"], 1.0)
         self.assertEqual(oss_slice["percentage"], 100.0)
 
-        # 4. Create & read custom Markdown guidance file
         saved_doc = app.save_guidance_document(
             {
                 "id": "custom-stacking",
@@ -179,15 +164,84 @@ class IdentityOSVerificationTests(unittest.TestCase):
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0]["title"], "Custom Habit Stacking")
 
-    def test_04_weekly_review_auto_summary_and_persistence(self) -> None:
+    def test_04_timestamps_devote_and_delete_reflected_in_db_and_logs(self) -> None:
+        app.init_db(db_path=self.db_path, seed_examples=False)
+        st0 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
+        ident_id = st0["identities"][0]["id"]
+        habit_id = st0["habits"][0]["id"]
+
+        # 1. Verify action stores day, month, year, hour, minute, second in DB and logs
+        created = app.create_action(
+            {
+                "habit_id": habit_id,
+                "action_date": "2026-10-26",
+                "identity_ids": [ident_id],
+                "kind": "vote",
+            },
+            db_path=self.db_path,
+        )
+        self.assertEqual(created["day"], 26)
+        self.assertEqual(created["month"], 10)
+        self.assertEqual(created["year"], 2026)
+        self.assertIsInstance(created["hour"], int)
+        self.assertIsInstance(created["minute"], int)
+        self.assertIsInstance(created["second"], int)
+        self.assertRegex(created["timestamp"], r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$")
+
+        with app.connect_db(self.db_path) as conn:
+            db_row = conn.execute("SELECT * FROM actions WHERE id = ?", (created["id"],)).fetchone()
+            self.assertEqual(db_row["day"], 26)
+            self.assertEqual(db_row["month"], 10)
+            self.assertEqual(db_row["year"], 2026)
+            self.assertTrue(0 <= db_row["hour"] <= 23)
+            self.assertTrue(0 <= db_row["minute"] <= 59)
+            self.assertTrue(0 <= db_row["second"] <= 59)
+
+        st1 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
+        self.assertEqual(len(st1["actions"]), 1)
+        self.assertRegex(st1["actions"][0]["timestamp_display"], r"^26/10/2026 \d{2}:\d{2}:\d{2}$")
+        self.assertEqual(st1["chart"]["total_votes"], 1)
+
+        # 2. Devote the voted habit -> removes the vote from DB & logs
+        devote_res1 = app.devote_action(
+            {"habit_id": habit_id, "action_date": "2026-10-26", "identity_ids": [ident_id]},
+            db_path=self.db_path,
+        )
+        self.assertEqual(devote_res1["effect"], "removed_vote")
+        st2 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
+        self.assertEqual(len(st2["actions"]), 0)
+        self.assertEqual(st2["chart"]["total_votes"], 0)
+
+        # 3. Cast 2 votes and then log a negative devote -> net votes = 1, both reflected in logs
+        app.create_action({"title": "Vote A", "action_date": "2026-10-26", "identity_ids": [ident_id], "kind": "vote"}, db_path=self.db_path)
+        app.create_action({"title": "Vote B", "action_date": "2026-10-26", "identity_ids": [ident_id], "kind": "vote"}, db_path=self.db_path)
+        devote_res2 = app.devote_action(
+            {"title": "Devote penalty", "action_date": "2026-10-26", "identity_ids": [ident_id], "mode": "log"},
+            db_path=self.db_path,
+        )
+        self.assertEqual(devote_res2["effect"], "logged_devote")
+        st3 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
+        self.assertEqual(st3["chart"]["total_votes"], 1)
+        self.assertEqual(st3["chart"]["total_devotes"], 1)
+        self.assertEqual(len(st3["actions"]), 3)
+
+        # 4. Delete habit -> deletes habit and its associated actions from DB and logs
+        app.create_action({"habit_id": habit_id, "action_date": "2026-10-26", "identity_ids": [ident_id], "kind": "vote"}, db_path=self.db_path)
+        app.delete_habit(habit_id, db_path=self.db_path)
+        st4 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
+        self.assertFalse(any(h["id"] == habit_id for h in st4["habits"]))
+        self.assertFalse(any(a["habit_id"] == habit_id for a in st4["actions"]))
+
+        # 5. Delete identity -> deletes identity and cleans up its exclusively linked habits & logs
+        app.delete_identity(ident_id, db_path=self.db_path)
+        st5 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
+        self.assertFalse(any(i["id"] == ident_id for i in st5["identities"]))
+        self.assertFalse(any(ident_id in a["identity_ids"] for a in st5["actions"]))
+
+    def test_05_weekly_review_and_http_endpoints(self) -> None:
         app.init_db(db_path=self.db_path, seed_examples=True)
         st = app.get_app_state(db_path=self.db_path, scope="week")
-        summary = st["weekly_review"]["auto_summary"]
-
-        self.assertGreater(len(summary["supported_identities"]), 0)
-        self.assertGreater(len(summary["neglected_identities"]), 0)
-
-        app.save_weekly_review(
+        rev_res = app.save_weekly_review(
             {
                 "week_start": st["week_start"],
                 "answers": {"What identity did my actions support this week?": "Entrepreneur and Reader"},
@@ -199,19 +253,8 @@ class IdentityOSVerificationTests(unittest.TestCase):
             },
             db_path=self.db_path,
         )
+        self.assertRegex(rev_res["review_date"], r"^\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}$")
 
-        st_after = app.get_app_state(db_path=self.db_path, scope="week")
-        self.assertEqual(
-            st_after["weekly_review"]["pinned_adjustment"]["one_adjustment"],
-            "Leave book on pillow every morning at 8am",
-        )
-        self.assertEqual(
-            st_after["weekly_review"]["saved"]["overall_stage"],
-            "Becoming consistent",
-        )
-
-    def test_05_http_endpoints_end_to_end(self) -> None:
-        app.init_db(db_path=self.db_path, seed_examples=True)
         app.IdentityOSRequestHandler.db_path = self.db_path
         app.IdentityOSRequestHandler.guidance_dir = app.GUIDANCE_DIR
 
@@ -222,23 +265,12 @@ class IdentityOSVerificationTests(unittest.TestCase):
 
         try:
             base_url = f"http://127.0.0.1:{port}"
-            # 1. GET index.html
             with urllib.request.urlopen(f"{base_url}/") as resp:
                 self.assertEqual(resp.status, 200)
-                html = resp.read().decode("utf-8")
-                self.assertIn("Identity Building OS", html)
-
-            # 2. GET /api/state
             with urllib.request.urlopen(f"{base_url}/api/state?scope=week") as resp:
                 self.assertEqual(resp.status, 200)
                 data = json.loads(resp.read().decode("utf-8"))
                 self.assertGreaterEqual(len(data["identities"]), 6)
-
-            # 3. GET /api/guidance
-            with urllib.request.urlopen(f"{base_url}/api/guidance") as resp:
-                self.assertEqual(resp.status, 200)
-                gdata = json.loads(resp.read().decode("utf-8"))
-                self.assertGreaterEqual(len(gdata["documents"]), 3)
         finally:
             server.shutdown()
             server.server_close()

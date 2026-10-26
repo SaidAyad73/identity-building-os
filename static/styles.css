@@ -363,6 +363,12 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+.kind-btn.active[data-kind="devote"] {
+  background: var(--surface-1);
+  color: var(--danger);
+  box-shadow: var(--shadow-sm);
+}
+
 .capture-inputs-row {
   display: grid;
   grid-template-columns: 2fr 1.2fr auto auto;
@@ -892,6 +898,37 @@ body {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+.btn-devote-sm {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--danger);
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.btn-devote-sm:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.btn-danger-link {
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.feed-item.devote {
+  border-left-color: var(--danger);
 }
 
 .ident-card-footer {
