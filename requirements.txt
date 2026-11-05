@@ -1,0 +1,11 @@
+# Python Requirements for Identity Building OS
+#
+# Runtime Architecture:
+# - Identity Building OS is built entirely on the Python Standard Library (Python 3.8+).
+# - Required standard library modules: sqlite3, http.server, urllib.parse, json, datetime, pathlib.
+# - No external third-party PyPI packages are required for runtime operation.
+#
+# Standalone Desktop Distribution:
+# - The distributed Windows installer bundles the official Python 3.12 (64-bit) embeddable runtime
+#   into `python-runtime/`, making the application fully self-contained on machines without Python.
+# - Setup script: scripts/setup_python_runtime.ps1

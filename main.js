@@ -56,12 +56,22 @@ async function ensureBackendRunning() {
     return;
   }
 
-  const pythonCmd = process.platform === "win32" ? "python" : "python3";
+  const bundledPython = path.join(
+    __dirname,
+    "python-runtime",
+    process.platform === "win32" ? "python.exe" : "python"
+  );
+  const pythonCmd = fs.existsSync(bundledPython)
+    ? bundledPython
+    : process.platform === "win32"
+    ? "python"
+    : "python3";
   const appPath = path.join(__dirname, "app.py");
 
   pythonProcess = spawn(pythonCmd, [appPath], {
     cwd: __dirname,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
     env: { ...process.env, PORT: String(SERVER_PORT), IDENTITY_OS_HOST: SERVER_HOST },
   });
 
