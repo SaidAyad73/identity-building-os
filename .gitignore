@@ -8,6 +8,14 @@ data/*.db
 data/*.db-journal
 data/*.db-wal
 
+# Node & Desktop
+node_modules/
+dist/
+
+# Environment & Logs
+.env
+*.log
+
 # OS / Editor files
 .DS_Store
 Thumbs.db

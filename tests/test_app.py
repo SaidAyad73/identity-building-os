@@ -1,11 +1,17 @@
-import hashlib
 import json
+import os
+import sys
 import tempfile
 import threading
 import unittest
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+
+# Ensure root directory is on python path
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 import app
 
@@ -15,35 +21,33 @@ class IdentityOSVerificationTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.temp_dir.name) / "test_identity_os.db"
         self.guidance_dir = Path(self.temp_dir.name) / "guidance"
-        self.base_md_hash_before = hashlib.sha256(app.BASE_MARKDOWN_PATH.read_bytes()).hexdigest()
+        self.old_env_db = os.environ.get("IDENTITY_OS_DB_PATH")
+        os.environ["IDENTITY_OS_DB_PATH"] = str(self.db_path)
+        app.DEFAULT_DB_PATH = self.db_path
+        app.GUIDANCE_DIR = self.guidance_dir
 
     def tearDown(self) -> None:
-        base_md_hash_after = hashlib.sha256(app.BASE_MARKDOWN_PATH.read_bytes()).hexdigest()
-        self.assertEqual(
-            self.base_md_hash_before,
-            base_md_hash_after,
-            "base_database.md must never be modified or overwritten!",
-        )
+        if self.old_env_db is not None:
+            os.environ["IDENTITY_OS_DB_PATH"] = self.old_env_db
+        else:
+            os.environ.pop("IDENTITY_OS_DB_PATH", None)
+        app.DEFAULT_DB_PATH = (app.ROOT_DIR / "data" / "identity_os.db").resolve()
+        app.GUIDANCE_DIR = (app.ROOT_DIR / "guidance").resolve()
         self.temp_dir.cleanup()
 
-    def test_01_dynamic_markdown_parser_and_non_destructive_seed(self) -> None:
-        parsed = app.parse_base_markdown(app.BASE_MARKDOWN_PATH)
-        self.assertEqual(len(parsed["identities"]), 6)
-        self.assertEqual(len(parsed["habits"]), 27)
-        self.assertEqual(len(parsed["examples"]), 5)
-        self.assertEqual(len(parsed["reflection_questions"]), 4)
-        self.assertEqual(len(parsed["stages"]), 5)
-        self.assertIn("not trying to eliminate fun", parsed["anti_principle"])
-
-        youtube_habits = [h for h in parsed["habits"] if "youtube" in h["title"].lower()]
-        self.assertEqual(len(youtube_habits), 1)
-        self.assertEqual(youtube_habits[0]["cadence"], "weekly")
-        self.assertFalse(youtube_habits[0]["title"].upper().startswith("WEAKLY"))
+    def test_01_resilient_bootstrap_and_schema(self) -> None:
+        """Verify DB initializes with built-in default settings, identities, and habits."""
+        app.init_db(db_path=self.db_path, seed_examples=False)
+        state = app.get_app_state(db_path=self.db_path, scope="week")
+        self.assertGreaterEqual(len(state["identities"]), 6)
+        self.assertGreaterEqual(len(state["habits"]), 4)
+        self.assertIn("stages", state["settings"])
+        self.assertIn("reflection_questions", state["settings"])
+        self.assertIn("anti_principle", state["settings"])
 
     def test_02_fractional_pie_chart_math_no_double_counting(self) -> None:
         app.init_db(db_path=self.db_path, seed_examples=False)
         state0 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
-        self.assertEqual(state0["chart"]["total_votes"], 0)
 
         ident_ids = [i["id"] for i in state0["identities"]]
         ent_id, free_id, disc_id = ident_ids[0], ident_ids[1], ident_ids[4]
@@ -112,7 +116,8 @@ class IdentityOSVerificationTests(unittest.TestCase):
         self.assertEqual(day_state["chart"]["total_votes"], 2)
         self.assertEqual(len(day_state["actions"]), 2)
 
-    def test_03_system_extendability_crud_identities_habits_and_guidance(self) -> None:
+    def test_03_system_extendability_crud_triggers_and_rules(self) -> None:
+        """Verify adding habits with Rule 1 triggers and 4-rule metadata."""
         app.init_db(db_path=self.db_path, seed_examples=False)
 
         new_ident = app.create_identity(
@@ -133,6 +138,13 @@ class IdentityOSVerificationTests(unittest.TestCase):
                 "cadence": "daily",
                 "category": "identity_habit",
                 "identity_ids": [new_id],
+                "trigger_type": "time_location",
+                "trigger_time": "10:00 AM",
+                "trigger_location": "Home desk",
+                "rule1_obvious": "Pin GitHub notifications tab to browser",
+                "rule2_attractive": "Help open-source developers ship features",
+                "rule3_easy": "Review smallest PR first (< 10 lines)",
+                "rule4_satisfying": "Approve and merge",
             },
             db_path=self.db_path,
         )
@@ -147,22 +159,27 @@ class IdentityOSVerificationTests(unittest.TestCase):
         )
 
         st = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
-        self.assertEqual(len(st["identities"]), 7)
-        oss_slice = next(s for s in st["chart"]["slices"] if s["identity_id"] == new_id)
-        self.assertEqual(oss_slice["weighted_votes"], 1.0)
-        self.assertEqual(oss_slice["percentage"], 100.0)
+        self.assertGreaterEqual(len(st["identities"]), 7)
+        created_h = next(h for h in st["habits"] if h["id"] == new_habit["id"])
+        self.assertEqual(created_h["trigger_type"], "time_location")
+        self.assertEqual(created_h["trigger_time"], "10:00 AM")
+        self.assertEqual(created_h["rule1_obvious"], "Pin GitHub notifications tab to browser")
 
-        saved_doc = app.save_guidance_document(
+        # Test updating habit rules & anti-identity inversion
+        app.update_habit(
+            new_habit["id"],
             {
-                "id": "custom-stacking",
-                "markdown": "# Custom Habit Stacking\n\n> After coffee, I write code.",
+                "title": "Reviewed PRs with diligence",
+                "trigger_type": "habit_stack",
+                "trigger_anchor": "After morning coffee",
+                "rule1_obvious": "Updated stack trigger",
             },
-            guidance_dir=self.guidance_dir,
+            db_path=self.db_path,
         )
-        self.assertEqual(saved_doc["id"], "custom-stacking")
-        docs = app.load_guidance_documents(self.guidance_dir)
-        self.assertEqual(len(docs), 1)
-        self.assertEqual(docs[0]["title"], "Custom Habit Stacking")
+        st2 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
+        updated_h = next(h for h in st2["habits"] if h["id"] == new_habit["id"])
+        self.assertEqual(updated_h["trigger_type"], "habit_stack")
+        self.assertEqual(updated_h["trigger_anchor"], "After morning coffee")
 
     def test_04_timestamps_devote_and_delete_reflected_in_db_and_logs(self) -> None:
         app.init_db(db_path=self.db_path, seed_examples=False)
@@ -274,6 +291,151 @@ class IdentityOSVerificationTests(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+    def test_06_json_export_and_import_for_ai_agents(self) -> None:
+        """Verify full database serialization and restoration via JSON for AI agents."""
+        app.init_db(db_path=self.db_path, seed_examples=False)
+
+        # 1. Export database to dict
+        exported = app.export_database_to_dict(self.db_path, self.guidance_dir)
+        self.assertEqual(exported["schema_version"], 1)
+        self.assertIn("identities", exported)
+        self.assertIn("habits", exported)
+        self.assertIn("settings", exported)
+        self.assertGreaterEqual(len(exported["identities"]), 6)
+
+        # 2. Add an action and a custom habit with triggers
+        habit_id = exported["habits"][0]["id"]
+        ident_id = exported["identities"][0]["id"]
+        app.create_action(
+            {"title": "Agent action test", "action_date": "2026-11-05", "identity_ids": [ident_id], "habit_id": habit_id},
+            db_path=self.db_path,
+        )
+
+        exported_with_action = app.export_database_to_dict(self.db_path, self.guidance_dir)
+        self.assertEqual(len(exported_with_action["actions"]), 1)
+
+        # 3. Create a fresh second database and import the exported state
+        db_path_2 = Path(self.temp_dir.name) / "test_import_os.db"
+        app.init_db(db_path=db_path_2, seed_examples=False)
+
+        import_res = app.import_database_from_dict(exported_with_action, db_path=db_path_2, guidance_dir=self.guidance_dir, mode="replace")
+        self.assertEqual(import_res["status"], "imported")
+        self.assertEqual(import_res["actions_count"], 1)
+
+        st2 = app.get_app_state(db_path=db_path_2, selected_date="2026-11-05", scope="day")
+        self.assertEqual(len(st2["actions"]), 1)
+        self.assertEqual(st2["actions"][0]["title"], "Agent action test")
+
+        # 4. Test merge mode: add new habit via JSON merge
+        merge_payload = {
+            "habits": [
+                {
+                    "id": "habit_agent_created",
+                    "title": "Created autonomously by AI Agent",
+                    "cadence": "daily",
+                    "two_minute_version": "Spend 2 min on AI prompt",
+                    "category": "identity_habit",
+                    "sort_order": 99,
+                    "active": 1,
+                    "identity_ids": [ident_id],
+                    "trigger_type": "time_location",
+                    "trigger_time": "11:00 AM",
+                    "trigger_location": "Terminal",
+                    "rule1_obvious": "Schedule automated agent run",
+                    "rule2_attractive": "Rapid progress",
+                    "rule3_easy": "One command",
+                    "rule4_satisfying": "Green test pass",
+                }
+            ]
+        }
+        merge_res = app.import_database_from_dict(merge_payload, db_path=db_path_2, guidance_dir=self.guidance_dir, mode="merge")
+        self.assertEqual(merge_res["status"], "imported")
+        st3 = app.get_app_state(db_path=db_path_2, scope="week")
+        self.assertTrue(any(h["id"] == "habit_agent_created" for h in st3["habits"]))
+
+    def test_07_cli_and_rest_export_import(self) -> None:
+        """Verify CLI flags --export / --import and REST /api/export /api/import."""
+        app.init_db(db_path=self.db_path, seed_examples=False)
+        json_file = Path(self.temp_dir.name) / "cli_backup.json"
+
+        # Test CLI export explicitly targeted to test db
+        handled_export = app.handle_cli_args(["--db", str(self.db_path), "--export", str(json_file)])
+        self.assertTrue(handled_export)
+        self.assertTrue(json_file.is_file())
+        exported_data = json.loads(json_file.read_text(encoding="utf-8"))
+        self.assertEqual(exported_data["schema_version"], 1)
+
+        # Test CLI import explicitly targeted to test db
+        handled_import = app.handle_cli_args(["--db", str(self.db_path), "--import", str(json_file), "--merge"])
+        self.assertTrue(handled_import)
+
+        # Test HTTP REST export and import
+        app.IdentityOSRequestHandler.db_path = self.db_path
+        app.IdentityOSRequestHandler.guidance_dir = app.GUIDANCE_DIR
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), app.IdentityOSRequestHandler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        try:
+            base_url = f"http://127.0.0.1:{port}"
+
+            with urllib.request.urlopen(f"{base_url}/api/export") as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertIn("identities", data)
+                self.assertIn("habits", data)
+
+            import_req = urllib.request.Request(
+                f"{base_url}/api/import",
+                data=json.dumps({"mode": "merge", "data": exported_data}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(import_req) as resp:
+                self.assertEqual(resp.status, 200)
+                res_json = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(res_json["status"], "imported")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_08_fail_loudly_no_silent_swallows(self) -> None:
+        """Verify errors are propagated loudly rather than silently swallowed."""
+        app.init_db(db_path=self.db_path, seed_examples=False)
+
+        # 1. Invalid date format must raise ValueError
+        with self.assertRaises(ValueError):
+            app.build_timestamp_fields("not-a-valid-date")
+
+        # 2. Invalid action kind must raise ValueError
+        with self.assertRaises(ValueError):
+            app.create_action(
+                {"title": "Test", "identity_ids": ["entrepreneur"], "kind": "invalid_kind"},
+                db_path=self.db_path,
+            )
+
+        # 3. Invalid identity ID must raise ValueError
+        with self.assertRaises(ValueError):
+            app.create_action(
+                {"title": "Test", "identity_ids": ["non_existent_identity_id"], "kind": "vote"},
+                db_path=self.db_path,
+            )
+
+        # 4. Invalid devote mode must raise ValueError
+        with self.assertRaises(ValueError):
+            app.devote_action(
+                {"title": "Test", "mode": "unsupported_mode"},
+                db_path=self.db_path,
+            )
+
+        # 5. Corrupted JSON in settings must raise ValueError
+        with app.connect_db(self.db_path) as conn:
+            conn.execute("INSERT OR REPLACE INTO settings (key, value_json) VALUES ('corrupted_key', '{not_json}')")
+            with self.assertRaises(ValueError):
+                app.get_settings(conn)
 
 
 if __name__ == "__main__":

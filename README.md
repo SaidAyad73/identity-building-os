@@ -75,6 +75,20 @@ You don’t need to review your system every single day. Once a week, open the *
 
 Identity Building OS runs privately on your own computer with zero subscriptions, accounts, or internet connection required.
 
+### Desktop App Launch (Electron)
+Run Identity Building OS as a dedicated native desktop application with system menus, window controls, and native backup file dialogs:
+
+1. **Install Electron dependencies (first time only):**
+   ```bash
+   npm install
+   ```
+2. **Launch the desktop application:**
+   ```bash
+   npm start
+   ```
+*(Electron automatically starts the local Python backend in the background and shuts it down cleanly when you close the app.)*
+
+### Standard Manual Web Launch
 1. **Open a terminal in this folder and start the app:**
    ```bash
    python app.py
@@ -83,6 +97,53 @@ Identity Building OS runs privately on your own computer with zero subscriptions
    ```text
    http://127.0.0.1:8765
    ```
+
+### AI Agent JSON Sync & Automation
+Identity OS is designed so autonomous AI agents (Claude, local LLMs, cron scripts) can read, manage, and back up your habits and identities directly via structured JSON:
+
+```bash
+# Export the entire database state to a JSON file
+python app.py --export backup.json
+
+# Restore/replace the entire database from a JSON file
+python app.py --import backup.json
+
+# Merge new habits or identities from an agent without overwriting existing data
+python app.py --import new_habits.json --merge
+```
+
+AI agents can also use the live REST endpoints:
+- `GET /api/export` — returns the complete database state in JSON.
+- `POST /api/import` — accepts `{ "data": {...}, "mode": "replace" | "merge" }`.
+
+### Rule 1 Triggers & The 4 Laws (with Anti-Identity Inversion)
+- **Rule 1 Triggers:** Configure explicit cues for every habit following *Atomic Habits*:
+  - **Implementation Intentions:** *"I will [behavior] at [time] in [location]."*
+  - **Habit Stacking:** *"After I [current routine], I will [new habit]."*
+  - **Visual & Environmental Cues:** *"e.g., Book placed on pillow."*
+- **Dynamic 4 Laws & Inversions:**
+  - When editing a **Desired Identity Habit**, the modal guides you through the Four Laws (*Make It Obvious, Make It Attractive, Make It Easy, Make It Satisfying*).
+  - When editing an **Anti-Identity Guardrail**, the rules automatically invert backwards to the Four Inversions (*Make It Invisible, Make It Unattractive, Make It Difficult, Make It Unsatisfying*).
+- **Hover Metadata Rules:** Hover over any habit card on your dashboard to see a floating card displaying its active trigger formula, 2-minute starter, and complete 4-rule strategy.
+
+### Running as a Background Service & On Windows Startup
+
+You can run the app silently in the background (no open terminal window) and have it automatically launch every time your computer starts or logs in:
+
+```powershell
+# Check status of service and startup configuration
+.\service.bat status
+
+# Install to Windows startup and start in the background immediately
+.\service.bat install
+
+# Other service controls
+.\service.bat start       # Start background service
+.\service.bat stop        # Stop background service
+.\service.bat restart     # Restart service
+.\service.bat open        # Open dashboard in default browser
+.\service.bat uninstall   # Remove from startup and stop service
+```
 
 *(On the very first launch, the app automatically reads [`base_database.md`](base_database.md) to set up your initial identities, habits, and examples while keeping your original Markdown file untouched.)*
 

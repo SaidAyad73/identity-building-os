@@ -8,10 +8,11 @@
 </head>
 <body>
   <div class="app-shell">
-    <!-- Top Header & Navigation -->
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">◎</div>
+        <div class="brand-mark" aria-hidden="true">
+          <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        </div>
         <div>
           <h1 class="brand-title">Identity Building OS</h1>
           <p class="brand-subtitle">Every action is a vote for the person you wish to become</p>
@@ -34,26 +35,32 @@
       </nav>
 
       <div class="topbar-actions">
+        <button type="button" id="topExportJsonBtn" class="btn-ghost-sm" title="Export system state to JSON">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Export JSON</span>
+        </button>
+        <button type="button" id="topImportJsonBtn" class="btn-ghost-sm" title="Import system state from JSON">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>Import JSON</span>
+        </button>
         <button type="button" id="twoMinModeBtn" class="pill-toggle" title="Law 3: Scale all habits down to their Two-Minute Rule starter version">
           <span class="dot-indicator"></span>
           <span>2-Minute Mode</span>
         </button>
         <button type="button" id="themeToggleBtn" class="icon-btn" title="Switch Light / Dark Theme" aria-label="Switch Theme">
-          ◐
+          <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
       </div>
     </header>
 
-    <!-- Pinned Weekly Adjustment Banner (Law 1: Make It Obvious) -->
     <section id="pinnedBanner" class="pinned-banner" aria-label="Current Weekly Focus">
       <div class="pinned-content">
         <span class="pinned-label">THIS WEEK'S FOCUS</span>
         <span id="pinnedAdjustmentText" class="pinned-text"></span>
       </div>
-      <button type="button" class="btn-link" data-jump-view="review">Update in Weekly Review →</button>
+      <button type="button" class="btn-link" data-jump-view="review">Update in Weekly Review</button>
     </section>
 
-    <!-- Time & Scope Controls -->
     <section class="toolbar-bar">
       <div class="scope-group" role="group" aria-label="Timeframe Scope">
         <button type="button" class="scope-btn active" data-scope="week">This Week</button>
@@ -61,31 +68,36 @@
       </div>
 
       <div class="date-nav">
-        <button type="button" id="prevDayBtn" class="icon-btn-sm" title="Previous Day">‹ Day</button>
+        <button type="button" id="prevDayBtn" class="icon-btn-sm" title="Previous Day">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+          <span>Day</span>
+        </button>
         <input type="date" id="selectedDateInput" class="date-input" aria-label="Selected Date" />
-        <button type="button" id="nextDayBtn" class="icon-btn-sm" title="Next Day">Day ›</button>
+        <button type="button" id="nextDayBtn" class="icon-btn-sm" title="Next Day">
+          <span>Day</span>
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
         <button type="button" id="todayBtn" class="btn-ghost-sm">Today</button>
         <span id="weekRangeLabel" class="week-range-badge"></span>
       </div>
     </section>
 
-    <!-- ================================================================== -->
-    <!-- VIEW 1: DASHBOARD                                                  -->
-    <!-- ================================================================== -->
     <main id="view-dashboard" class="view-panel active">
-      <!-- Quick-Capture Evidence Bar -->
       <section class="card quick-capture-card" aria-labelledby="quickCaptureHeading">
         <div class="quick-capture-header">
-          <h2 id="quickCaptureHeading" class="section-kicker">CAST A VOTE — LOG BEHAVIORAL EVIDENCE</h2>
+          <h2 id="quickCaptureHeading" class="section-kicker">CAST A VOTE - LOG BEHAVIORAL EVIDENCE</h2>
           <div class="capture-kind-switch" role="group" aria-label="Entry Type">
             <button type="button" class="kind-btn active" data-kind="vote" title="Positive behavioral vote">
-              + Identity Vote
+              <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Vote</span>
             </button>
-            <button type="button" class="kind-btn" data-kind="devote" title="Remove/subtract a vote and record in logs">
-              − Devote
+            <button type="button" class="kind-btn" data-kind="devote" title="Subtract a vote in logs">
+              <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>Devote</span>
             </button>
-            <button type="button" class="kind-btn" data-kind="obstacle" title="Rule 4: Missing a habit is information, not a character verdict">
-              ⚠ Log Obstacle / Friction
+            <button type="button" class="kind-btn" data-kind="obstacle" title="Rule 4: Missing a habit is information">
+              <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>Obstacle</span>
             </button>
           </div>
         </div>
@@ -96,7 +108,7 @@
               type="text"
               id="actionTitleInput"
               class="input-main"
-              placeholder="What concrete action did you take? (e.g., Shipped landing page, Read 15 pages, Stopped gaming on time)"
+              placeholder="What concrete action did you take? (e.g., Shipped feature, Read 15 pages, Stopped gaming on time)"
               required
             />
             <input
@@ -121,15 +133,13 @@
         </form>
       </section>
 
-      <!-- Visual Analytics Row: Identity Pie Chart + Calendar Strip -->
       <section class="bento-grid">
-        <!-- Identity Pie / Donut Chart Card -->
         <article class="card chart-card">
           <div class="card-header-row">
             <div>
               <h2 class="card-title">Identity Vote Distribution</h2>
               <p class="card-subtitle" id="chartSubtitle">
-                Normalized fractional attribution (multi-identity actions split weight 1/k — zero double-counting)
+                Normalized fractional attribution (multi-identity actions split weight 1/k)
               </p>
             </div>
             <span class="rule-badge" title="Rule 3 from your system">
@@ -159,7 +169,6 @@
           </div>
         </article>
 
-        <!-- Weekly Calendar Strip & 28-Day Consistency Card -->
         <article class="card calendar-card">
           <div class="card-header-row">
             <div>
@@ -186,15 +195,14 @@
 
           <div class="heatmap-section">
             <div class="heatmap-header">
-              <span class="section-kicker">LAST 28 DAYS — REPEATED BEHAVIOR OVER STREAKS</span>
-              <span class="recovery-legend">↺ = "Never Miss Twice" Recovery Day</span>
+              <span class="section-kicker">LAST 28 DAYS - REPEATED BEHAVIOR OVER STREAKS</span>
+              <span class="recovery-legend">Recovery: bounce back after quiet day</span>
             </div>
             <div id="heatmapGrid" class="heatmap-grid" role="list" aria-label="28-Day Consistency Grid"></div>
           </div>
         </article>
       </section>
 
-      <!-- Dynamic Identity Cards Grid -->
       <section class="identities-section">
         <div class="section-header-bar">
           <div>
@@ -210,9 +218,7 @@
         <div id="identityCardsGrid" class="identity-cards-grid"></div>
       </section>
 
-      <!-- Anti-Identity Guardrails + Activity Evidence Feed -->
       <section class="bottom-split-grid">
-        <!-- Anti-Identity Guardrails Card -->
         <article class="card anti-identity-card">
           <div class="card-header-row">
             <div>
@@ -227,7 +233,6 @@
           <div id="guardrailsList" class="guardrails-list"></div>
         </article>
 
-        <!-- Evidence Activity Feed Card -->
         <article class="card feed-card">
           <div class="card-header-row">
             <div>
@@ -244,12 +249,8 @@
       </section>
     </main>
 
-    <!-- ================================================================== -->
-    <!-- VIEW 2: WEEKLY REVIEW                                              -->
-    <!-- ================================================================== -->
     <main id="view-review" class="view-panel" hidden>
       <div class="review-layout">
-        <!-- Left Column: Auto-Compiled Behavioral Evidence -->
         <section class="card review-evidence-panel">
           <div class="card-header-row">
             <div>
@@ -289,7 +290,6 @@
           </div>
         </section>
 
-        <!-- Right Column: Guided Reflection & Next Week Commitment -->
         <section class="card review-form-panel">
           <form id="weeklyReviewForm">
             <div class="card-header-row">
@@ -304,7 +304,7 @@
 
             <div class="review-highlight-inputs">
               <div class="form-group">
-                <label for="revOneAdjustment"><strong>Pinned Improvement for Next Week (Law 1 — Make It Obvious)</strong></label>
+                <label for="revOneAdjustment"><strong>Pinned Improvement for Next Week (Law 1: Make It Obvious)</strong></label>
                 <input
                   type="text"
                   id="revOneAdjustment"
@@ -354,9 +354,6 @@
       </div>
     </main>
 
-    <!-- ================================================================== -->
-    <!-- VIEW 3: ATOMIC HABITS PLAYBOOK (EXTERNAL MARKDOWN GUIDANCE)        -->
-    <!-- ================================================================== -->
     <main id="view-guidance" class="view-panel" hidden>
       <div class="guidance-layout">
         <aside class="card guidance-sidebar">
@@ -390,9 +387,6 @@
       </div>
     </main>
 
-    <!-- ================================================================== -->
-    <!-- VIEW 4: EXTEND & CONFIGURE SYSTEM                                  -->
-    <!-- ================================================================== -->
     <main id="view-manage" class="view-panel" hidden>
       <div class="manage-grid">
         <section class="card">
@@ -430,6 +424,33 @@
         <section class="card" style="grid-column: 1 / -1;">
           <div class="card-header-row">
             <div>
+              <h2 class="card-title">System Data &amp; AI Agent Sync (JSON)</h2>
+              <p class="card-subtitle">Export or import your complete system state in structured JSON so AI agents can manage your identities and habits</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" id="manageExportJsonBtn" class="btn-secondary">
+                <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Export JSON Backup</span>
+              </button>
+              <button type="button" id="manageImportJsonBtn" class="btn-primary">
+                <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Import JSON (Restore)</span>
+              </button>
+              <button type="button" id="manageMergeJsonBtn" class="btn-ghost-sm" title="Merge new habits without deleting existing data">
+                <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+                <span>Merge JSON (Add New)</span>
+              </button>
+            </div>
+          </div>
+          <p class="meta-note" style="margin-top:8px;">
+            AI agents can also read and update this system directly via CLI: <code>python app.py --export backup.json</code> and <code>python app.py --import backup.json</code>, or via the <code>/api/export</code> and <code>/api/import</code> REST endpoints.
+          </p>
+          <span id="dataSyncStatus" class="save-status"></span>
+        </section>
+
+        <section class="card" style="grid-column: 1 / -1;">
+          <div class="card-header-row">
+            <div>
               <h2 class="card-title">Manage Habits &amp; Anti-Identity Guardrails</h2>
               <p class="card-subtitle">Edit or delete any recurring habit or guardrail (reflected immediately in database and logs)</p>
             </div>
@@ -441,14 +462,13 @@
     </main>
   </div>
 
-  <!-- ==================================================================== -->
-  <!-- MODAL: CREATE / EDIT IDENTITY                                        -->
-  <!-- ==================================================================== -->
   <div id="identityModal" class="modal-backdrop" hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="identityModalTitle">
       <div class="card-header-row">
         <h2 id="identityModalTitle" class="card-title">New Identity</h2>
-        <button type="button" class="icon-btn-sm" data-close-modal="identityModal">✕</button>
+        <button type="button" class="icon-btn-sm" data-close-modal="identityModal">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       <form id="identityModalForm">
         <input type="hidden" id="identModalId" />
@@ -493,26 +513,28 @@
     </div>
   </div>
 
-  <!-- ==================================================================== -->
-  <!-- MODAL: CREATE / EDIT HABIT OR GUARDRAIL                              -->
-  <!-- ==================================================================== -->
   <div id="habitModal" class="modal-backdrop" hidden>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="habitModalTitle">
+    <div class="modal-card modal-card-lg" role="dialog" aria-modal="true" aria-labelledby="habitModalTitle">
       <div class="card-header-row">
-        <h2 id="habitModalTitle" class="card-title">New Recurring Habit</h2>
-        <button type="button" class="icon-btn-sm" data-close-modal="habitModal">✕</button>
+        <div>
+          <h2 id="habitModalTitle" class="card-title">New Recurring Habit</h2>
+          <p id="habitModalSubtitle" class="card-subtitle">Define behavior according to Atomic Habits principles</p>
+        </div>
+        <button type="button" class="icon-btn-sm" data-close-modal="habitModal">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       <form id="habitModalForm">
         <input type="hidden" id="habitModalId" />
-        <div class="form-group">
-          <label for="habitModalTitleInput">Habit / Action Description</label>
-          <input type="text" id="habitModalTitleInput" class="input-main" placeholder="e.g., Wrote 200 words of technical notes" required />
-        </div>
-        <div class="form-group">
-          <label for="habitModalTwoMinInput">Two-Minute Rule Starter Version (Law 3 — Make It Easy)</label>
-          <input type="text" id="habitModalTwoMinInput" class="input-main" placeholder="e.g., Open notes file and write 1 sentence" />
-        </div>
+
         <div class="form-row-2">
+          <div class="form-group">
+            <label for="habitModalCategory">Habit Type</label>
+            <select id="habitModalCategory" class="input-main">
+              <option value="identity_habit">Desired Identity Habit (Positive)</option>
+              <option value="anti_identity_guard">Anti-Identity Guardrail (Boundary)</option>
+            </select>
+          </div>
           <div class="form-group">
             <label for="habitModalCadence">Cadence</label>
             <select id="habitModalCadence" class="input-main">
@@ -521,26 +543,107 @@
               <option value="anytime">Anytime</option>
             </select>
           </div>
-          <div class="form-group">
-            <label for="habitModalCategory">Type</label>
-            <select id="habitModalCategory" class="input-main">
-              <option value="identity_habit">Desired Identity Habit</option>
-              <option value="anti_identity_guard">Anti-Identity Guardrail</option>
+        </div>
+
+        <div class="form-group">
+          <label for="habitModalTitleInput" id="habitModalTitleLabel">Habit Description</label>
+          <input type="text" id="habitModalTitleInput" class="input-main" placeholder="e.g., Wrote 200 words of technical notes" required />
+        </div>
+
+        <div class="rules-card-box">
+          <div class="rules-card-header">
+            <span class="svg-icon-badge" id="habitTriggerIcon">
+              <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </span>
+            <div>
+              <h4 id="habitTriggerSectionTitle" class="rules-box-title">Rule 1 Trigger: Make It Obvious</h4>
+              <p id="habitTriggerSectionSubtitle" class="rules-box-subtitle">Specify when and where or anchor to an existing routine</p>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 10px;">
+            <label for="habitModalTriggerType">Trigger Pattern</label>
+            <select id="habitModalTriggerType" class="input-main">
+              <option value="none">None / Flexible Cue</option>
+              <option value="time_location">Time &amp; Location (Implementation Intention)</option>
+              <option value="habit_stack">Habit Stacking (After [current habit], I will [new habit])</option>
+              <option value="visual_cue">Visual / Environmental Cue</option>
             </select>
           </div>
+
+          <div id="triggerFieldsTimeLoc" class="form-row-2 trigger-field-row" hidden>
+            <div class="form-group">
+              <label for="habitModalTriggerTime">Time / Moment</label>
+              <input type="text" id="habitModalTriggerTime" class="input-main" placeholder="e.g., 07:30 AM or Immediately upon waking" />
+            </div>
+            <div class="form-group">
+              <label for="habitModalTriggerLocation">Location / Space</label>
+              <input type="text" id="habitModalTriggerLocation" class="input-main" placeholder="e.g., Kitchen table, Office desk" />
+            </div>
+          </div>
+
+          <div id="triggerFieldsHabitStack" class="form-group trigger-field-row" hidden>
+            <label for="habitModalTriggerAnchor">Anchor Habit / Established Routine</label>
+            <input type="text" id="habitModalTriggerAnchor" class="input-main" placeholder="e.g., After I pour my morning coffee" />
+          </div>
+
+          <div id="triggerFieldsVisualCue" class="form-group trigger-field-row" hidden>
+            <label for="habitModalTriggerCue" id="habitModalTriggerCueLabel">Visual / Environmental Cue</label>
+            <input type="text" id="habitModalTriggerCue" class="input-main" placeholder="e.g., Book placed on pillow / Phone placed in other room" />
+          </div>
+
+          <div id="triggerPreviewWrap" class="trigger-preview-box" hidden>
+            <span class="trigger-preview-label">Live Cue Formula:</span>
+            <span id="triggerPreviewText" class="trigger-preview-text"></span>
+          </div>
         </div>
-        <div class="form-group">
+
+        <div class="rules-card-box" id="habitLawsBox" style="margin-top: 14px;">
+          <div class="rules-card-header">
+            <span class="svg-icon-badge" id="habitLawsIcon">
+              <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </span>
+            <div>
+              <h4 id="habitLawsHeaderTitle" class="rules-box-title">Atomic Habits - The 4 Laws of Behavior Change</h4>
+              <p id="habitLawsHeaderSubtitle" class="rules-box-subtitle">Designed to make good habits effortless and durable</p>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 10px;">
+            <label for="habitModalRule1" id="habitRule1Label">Law 1: Make It Obvious (Cue &amp; Visibility Strategy)</label>
+            <input type="text" id="habitModalRule1" class="input-main" placeholder="e.g., Keep materials visible; design environment for action" />
+          </div>
+
+          <div class="form-group">
+            <label for="habitModalRule2" id="habitRule2Label">Law 2: Make It Attractive (Temptation Bundling / Mindset)</label>
+            <input type="text" id="habitModalRule2" class="input-main" placeholder="e.g., After I finish 30m of deep work, I enjoy a cup of specialty tea" />
+          </div>
+
+          <div class="form-group">
+            <label for="habitModalTwoMinInput" id="habitRule3Label">Law 3: Make It Easy (Two-Minute Rule Starter Version)</label>
+            <input type="text" id="habitModalTwoMinInput" class="input-main" placeholder="e.g., Open the workspace and write 2 sentences" />
+          </div>
+
+          <div class="form-group">
+            <label for="habitModalRule4" id="habitRule4Label">Law 4: Make It Satisfying (Immediate Reward &amp; Evidence)</label>
+            <input type="text" id="habitModalRule4" class="input-main" placeholder="e.g., Cast a vote immediately; celebrate the small win; never miss twice" />
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 14px;">
           <label>Linked Identities (select 1 or more)</label>
           <div id="habitModalIdentityPills" class="identity-pills-wrap"></div>
         </div>
+
         <div class="modal-actions">
           <button type="button" class="btn-secondary" data-close-modal="habitModal">Cancel</button>
-          <button type="submit" class="btn-primary">Save Habit</button>
+          <button type="submit" class="btn-primary" id="habitModalSubmitBtn">Save Habit</button>
         </div>
       </form>
     </div>
   </div>
 
+  <input type="file" id="importJsonFileInput" accept=".json" style="display:none" />
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
   <script src="/app.js"></script>
 </body>

@@ -1,5 +1,3 @@
-/* Identity Building OS — Extendable Frontend Client */
-
 const state = {
   view: "dashboard",
   scope: "week",
@@ -33,6 +31,32 @@ function escapeHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function iconSvg(name, size = 14) {
+  const icons = {
+    check: '<polyline points="20 6 9 17 4 12"/>',
+    minus: '<line x1="5" y1="12" x2="19" y2="12"/>',
+    close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+    alert: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    recovery: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+    repeat: '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
+    star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+    bolt: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+    sparkle: '<path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>',
+    shieldAlert: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+    feather: '<path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/><line x1="17.5" y1="15" x2="9" y2="15"/>',
+    barrier: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>',
+    target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+    slashCircle: '<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>',
+    info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+  };
+  const body = icons[name] || icons.info;
+  return `<svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24" width="${size}" height="${size}">${body}</svg>`;
 }
 
 function showToast(msg) {
@@ -137,9 +161,6 @@ function renderQuickCapture() {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* SVG Donut Chart with 2px Surface Gap & Fractional Attribution              */
-/* -------------------------------------------------------------------------- */
 function polarToCartesian(cx, cy, r, angleInDegrees) {
   const rad = ((angleInDegrees - 90) * Math.PI) / 180.0;
   return {
@@ -260,9 +281,6 @@ function renderDonutChart() {
   document.getElementById("kpiActiveIdents").textContent = `${chart.active_identities_count}/${chart.slices.length}`;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Calendar Strip & 28-Day Heatmap                                            */
-/* -------------------------------------------------------------------------- */
 function renderCalendar() {
   const strip = document.getElementById("weekDaysStrip");
   const heatmap = document.getElementById("heatmapGrid");
@@ -280,12 +298,12 @@ function renderCalendar() {
         return ident ? `<span class="day-dot" style="background:${identColor(ident)}"></span>` : "";
       })
       .join("");
-    const recoveryMark = day.never_miss_twice_recovered ? `<span title="Never Miss Twice recovery!">↺</span> ` : "";
+    const recoveryMark = day.never_miss_twice_recovered ? `<span title="Never Miss Twice recovery">${iconSvg("recovery", 11)}</span> ` : "";
     tile.innerHTML = `
       <span class="day-name">${day.day_name}</span>
       <span class="day-num">${day.day_num}</span>
       <div class="day-dots">${dotsHtml}</div>
-      <span class="day-meta">${recoveryMark}${day.vote_count}v${day.devote_count ? ` · -${day.devote_count}d` : ""}${day.obstacle_count ? ` · ${day.obstacle_count}!` : ""}</span>
+      <span class="day-meta">${recoveryMark}${day.vote_count}v${day.devote_count ? ` -${day.devote_count}d` : ""}${day.obstacle_count ? ` ${day.obstacle_count}!` : ""}</span>
     `;
     tile.addEventListener("click", () => {
       state.selectedDate = day.date;
@@ -310,9 +328,71 @@ function renderCalendar() {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Extendable Identity Cards, 1-Click Vote, Devote & Delete                   */
-/* -------------------------------------------------------------------------- */
+function renderHabitRulesPopoverHtml(h) {
+  const isAnti = h.category === "anti_identity_guard";
+
+  let triggerFormatted = "";
+  if (h.trigger_type === "time_location") {
+    const time = h.trigger_time ? `at ${h.trigger_time}` : "";
+    const loc = h.trigger_location ? `in ${h.trigger_location}` : "";
+    triggerFormatted = [time, loc].filter(Boolean).join(" ") || "Time and location specified";
+  } else if (h.trigger_type === "habit_stack") {
+    triggerFormatted = h.trigger_anchor ? `After: "${h.trigger_anchor}"` : "Anchored to routine";
+  } else if (h.trigger_type === "visual_cue") {
+    triggerFormatted = h.trigger_cue ? `Cue: "${h.trigger_cue}"` : "Visual environmental cue";
+  } else if (h.rule1_obvious) {
+    triggerFormatted = h.rule1_obvious;
+  } else {
+    triggerFormatted = isAnti ? "Keep cues out of sight (remove feeds and devices)" : "Make cues visible in environment";
+  }
+
+  const rule1 = h.rule1_obvious || triggerFormatted;
+  const rule2 = h.rule2_attractive || (isAnti ? "Notice real mental cost, drained focus, and regret" : "Pair with something enjoyable; reframe as opportunity");
+  const rule3 = h.two_minute_version || h.rule3_easy || (isAnti ? "Increase friction: logouts, blockers, physical distance" : "Start with < 120s action to master showing up");
+  const rule4 = h.rule4_satisfying || (isAnti ? "Log slips immediately as obstacles; make costs visible" : "Cast an identity vote immediately; never miss twice");
+
+  return `
+    <div class="habit-rules-popover" role="tooltip">
+      <div class="popover-header">
+        <span class="popover-badge ${isAnti ? "badge-anti" : "badge-identity"}">
+          ${isAnti ? "Anti-Identity: 4 Inversions" : "Atomic Habit: 4 Laws"}
+        </span>
+        <span class="popover-cadence">${escapeHtml(h.cadence || "daily")}</span>
+      </div>
+      <div class="popover-rules-grid">
+        <div class="popover-rule-item">
+          <div class="popover-rule-title">
+            <span class="popover-icon">${isAnti ? iconSvg("eyeOff") : iconSvg("eye")}</span>
+            <strong>${isAnti ? "1. Make It Invisible" : "1. Make It Obvious"}</strong>
+          </div>
+          <div class="popover-rule-content">${escapeHtml(rule1)}</div>
+        </div>
+        <div class="popover-rule-item">
+          <div class="popover-rule-title">
+            <span class="popover-icon">${isAnti ? iconSvg("shieldAlert") : iconSvg("sparkle")}</span>
+            <strong>${isAnti ? "2. Make It Unattractive" : "2. Make It Attractive"}</strong>
+          </div>
+          <div class="popover-rule-content">${escapeHtml(rule2)}</div>
+        </div>
+        <div class="popover-rule-item">
+          <div class="popover-rule-title">
+            <span class="popover-icon">${isAnti ? iconSvg("barrier") : iconSvg("feather")}</span>
+            <strong>${isAnti ? "3. Make It Difficult" : "3. Make It Easy"}</strong>
+          </div>
+          <div class="popover-rule-content">${escapeHtml(rule3)}</div>
+        </div>
+        <div class="popover-rule-item">
+          <div class="popover-rule-title">
+            <span class="popover-icon">${isAnti ? iconSvg("slashCircle") : iconSvg("target")}</span>
+            <strong>${isAnti ? "4. Make It Unsatisfying" : "4. Make It Satisfying"}</strong>
+          </div>
+          <div class="popover-rule-content">${escapeHtml(rule4)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderIdentityCards() {
   const grid = document.getElementById("identityCardsGrid");
   grid.innerHTML = "";
@@ -347,17 +427,19 @@ function renderIdentityCards() {
                   <span class="habit-title-text">
                     <span class="habit-cadence-tag">${escapeHtml(h.cadence)}</span>
                     ${escapeHtml(displayTitle)}
+                    <span class="rules-info-pill" title="Hover to view Atomic Habits 4 Laws and triggers">${iconSvg("info", 11)} Rules</span>
                   </span>
+                  ${renderHabitRulesPopoverHtml(h)}
                 </div>
                 <div class="habit-actions">
                   <button type="button" class="btn-vote-sm" data-quick-habit="${escapeHtml(h.id)}" data-ident="${escapeHtml(ident.id)}">
-                    ${doneCount > 0 ? `✓ Voted (${doneCount})` : "+ Vote"}
+                    ${iconSvg("check", 12)} <span>${doneCount > 0 ? `Voted (${doneCount})` : "Vote"}</span>
                   </button>
-                  <button type="button" class="btn-devote-sm" title="Devote (undo today's vote or subtract a vote in logs)" data-devote-habit="${escapeHtml(h.id)}" data-ident="${escapeHtml(ident.id)}">
-                    − Devote
+                  <button type="button" class="btn-devote-sm" title="Devote habit" data-devote-habit="${escapeHtml(h.id)}" data-ident="${escapeHtml(ident.id)}">
+                    ${iconSvg("minus", 11)} <span>Devote</span>
                   </button>
-                  <button type="button" class="icon-btn-sm" title="Edit habit" data-edit-habit="${escapeHtml(h.id)}">✎</button>
-                  <button type="button" class="icon-btn-sm" title="Delete habit" data-del-habit="${escapeHtml(h.id)}">✕</button>
+                  <button type="button" class="icon-btn-sm" title="Edit habit" data-edit-habit="${escapeHtml(h.id)}">${iconSvg("edit", 12)}</button>
+                  <button type="button" class="icon-btn-sm" title="Delete habit" data-del-habit="${escapeHtml(h.id)}">${iconSvg("close", 12)}</button>
                 </div>
               </div>
             `;
@@ -506,9 +588,6 @@ function renderIdentityCards() {
   });
 }
 
-/* -------------------------------------------------------------------------- */
-/* Anti-Identity Guardrails & Evidence Activity Feed                          */
-/* -------------------------------------------------------------------------- */
 function renderGuardrailsAndFeed() {
   const { habits, actions, identities, settings } = state.data;
   document.getElementById("antiPrincipleDisplay").textContent =
@@ -525,18 +604,22 @@ function renderGuardrailsAndFeed() {
     const text = state.twoMinuteMode && g.two_minute_version ? g.two_minute_version : g.title;
     item.innerHTML = `
       <div class="habit-text-wrap">
-        <span class="habit-title-text">${escapeHtml(text)}</span>
+        <span class="habit-title-text">
+          ${escapeHtml(text)}
+          <span class="rules-info-pill" title="Hover to view Anti-Identity 4 Inversions">${iconSvg("info", 11)} Inversions</span>
+        </span>
+        ${renderHabitRulesPopoverHtml(g)}
       </div>
       <div class="habit-actions">
         <button type="button" class="btn-vote-sm" data-guard-vote="${escapeHtml(g.id)}">
-          ${done > 0 ? `✓ Held (${done})` : "+ Held Boundary"}
+          ${iconSvg("check", 12)} <span>${done > 0 ? `Held (${done})` : "Held Boundary"}</span>
         </button>
         <button type="button" class="btn-devote-sm" title="Devote guardrail" data-guard-devote="${escapeHtml(g.id)}">
-          − Devote
+          ${iconSvg("minus", 11)} <span>Devote</span>
         </button>
-        <button type="button" class="icon-btn-sm" title="Log slip/obstacle for this guardrail" data-guard-slip="${escapeHtml(g.id)}">⚠</button>
-        <button type="button" class="icon-btn-sm" title="Edit guardrail" data-edit-guard="${escapeHtml(g.id)}">✎</button>
-        <button type="button" class="icon-btn-sm" title="Delete guardrail" data-del-guard="${escapeHtml(g.id)}">✕</button>
+        <button type="button" class="icon-btn-sm" title="Log obstacle for this guardrail" data-guard-slip="${escapeHtml(g.id)}">${iconSvg("alert", 12)}</button>
+        <button type="button" class="icon-btn-sm" title="Edit guardrail" data-edit-guard="${escapeHtml(g.id)}">${iconSvg("edit", 12)}</button>
+        <button type="button" class="icon-btn-sm" title="Delete guardrail" data-del-guard="${escapeHtml(g.id)}">${iconSvg("close", 12)}</button>
       </div>
     `;
     guardList.appendChild(item);
@@ -649,20 +732,20 @@ function renderGuardrailsAndFeed() {
     const badges = act.identities
       .map(
         (idObj) =>
-          `<span class="mini-badge"><span style="color:${identColor(idObj)}">●</span> ${escapeHtml(idObj.name)}</span>`
+          `<span class="mini-badge"><span class="dot-swatch" style="background:${identColor(idObj)}"></span> ${escapeHtml(idObj.name)}</span>`
       )
       .join("");
     const weightBadge =
       (act.kind === "vote" || act.kind === "devote") && act.identities.length >= 1
         ? `<span class="mini-badge">${act.fractional_weight > 0 ? `+${act.fractional_weight}` : act.fractional_weight} wt</span>`
         : "";
-    const twoMinBadge = act.used_two_minute_rule ? `<span class="mini-badge">⚡ 2-Min Rule</span>` : "";
+    const twoMinBadge = act.used_two_minute_rule ? `<span class="mini-badge">${iconSvg("bolt", 11)} 2-Min Rule</span>` : "";
     const kindBadge =
       act.kind === "obstacle"
-        ? `<span class="mini-badge" style="color:var(--warn)">⚠ Obstacle</span>`
+        ? `<span class="mini-badge" style="color:var(--warn)">${iconSvg("alert", 11)} Obstacle</span>`
         : act.kind === "devote"
-        ? `<span class="mini-badge" style="color:var(--danger)">− Devote</span>`
-        : `<span class="mini-badge" style="color:var(--good)">+ Vote</span>`;
+        ? `<span class="mini-badge" style="color:var(--danger)">${iconSvg("minus", 11)} Devote</span>`
+        : `<span class="mini-badge" style="color:var(--good)">${iconSvg("check", 11)} Vote</span>`;
 
     const fullTimestamp = act.timestamp_display || act.created_at || `${act.action_date} ${act.action_time || ""}`;
 
@@ -671,7 +754,7 @@ function renderGuardrailsAndFeed() {
         <div class="feed-item-title">${escapeHtml(act.title)}</div>
         ${act.evidence_note ? `<div class="feed-item-note">${escapeHtml(act.evidence_note)}</div>` : ""}
         <div class="feed-item-meta">
-          <span class="mini-badge" title="Day/Month/Year Hour:Minute:Second">🕒 ${escapeHtml(fullTimestamp)}</span>
+          <span class="mini-badge" title="Timestamp">${iconSvg("clock", 11)} ${escapeHtml(fullTimestamp)}</span>
           ${kindBadge}
           ${twoMinBadge}
           ${badges}
@@ -681,10 +764,10 @@ function renderGuardrailsAndFeed() {
       <div class="habit-actions">
         ${
           act.kind === "vote"
-            ? `<button type="button" class="btn-devote-sm" title="Devote / remove this vote from DB & logs" data-devote-action="${act.id}">− Devote</button>`
+            ? `<button type="button" class="btn-devote-sm" title="Devote action" data-devote-action="${act.id}">${iconSvg("minus", 11)} <span>Devote</span></button>`
             : ""
         }
-        <button type="button" class="icon-btn-sm" title="Delete log entry" data-del-action="${act.id}">✕</button>
+        <button type="button" class="icon-btn-sm" title="Delete log entry" data-del-action="${act.id}">${iconSvg("close", 12)}</button>
       </div>
     `;
     feedEl.appendChild(row);
@@ -710,9 +793,6 @@ function renderGuardrailsAndFeed() {
   });
 }
 
-/* -------------------------------------------------------------------------- */
-/* Weekly Review View                                                         */
-/* -------------------------------------------------------------------------- */
 function renderWeeklyReview() {
   const { weekly_review, week_start, week_end, settings } = state.data;
   const { auto_summary, saved } = weekly_review;
@@ -732,14 +812,14 @@ function renderWeeklyReview() {
   const negEl = document.getElementById("revNeglectedList");
   negEl.innerHTML = auto_summary.neglected_identities.length
     ? auto_summary.neglected_identities
-        .map((n) => `<div>• ${escapeHtml(n.name)} (0 net votes this week)</div>`)
+        .map((n) => `<div>- ${escapeHtml(n.name)} (0 net votes this week)</div>`)
         .join("")
     : `<div>All active identities received positive net votes this week!</div>`;
 
   const repEl = document.getElementById("revRepeatedList");
   repEl.innerHTML = auto_summary.repeated_behaviors.length
     ? auto_summary.repeated_behaviors
-        .map((r) => `<div>↻ <strong>${escapeHtml(r.title)}</strong> (${r.count}× this week)</div>`)
+        .map((r) => `<div>${iconSvg("repeat", 12)} <strong>${escapeHtml(r.title)}</strong> (${r.count}x this week)</div>`)
         .join("")
     : `<div class="card-subtitle">No single behavior repeated 2+ times yet this week.</div>`;
 
@@ -748,20 +828,22 @@ function renderWeeklyReview() {
     ? auto_summary.obstacles
         .map(
           (o) =>
-            `<div>${o.kind === "devote" ? "−" : "⚠"} <strong>${escapeHtml(o.title)}</strong> (${escapeHtml(o.timestamp_display || o.action_date)}) ${o.evidence_note ? `— ${escapeHtml(o.evidence_note)}` : ""}</div>`
+            `<div>${o.kind === "devote" ? iconSvg("minus", 11) : iconSvg("alert", 11)} <strong>${escapeHtml(o.title)}</strong> (${escapeHtml(o.timestamp_display || o.action_date)}) ${o.evidence_note ? `- ${escapeHtml(o.evidence_note)}` : ""}</div>`
         )
         .join("")
     : `<div>No devotes or obstacles logged this week.</div>`;
 
   const highEl = document.getElementById("revHighlightsList");
-  highEl.innerHTML = auto_summary.strongest_candidates.length
-    ? auto_summary.strongest_candidates
-        .map(
-          (c) =>
-            `<div>★ <strong>${escapeHtml(c.title)}</strong> (${escapeHtml(c.timestamp_display || c.action_date)}) ${c.evidence_note ? `— <em>${escapeHtml(c.evidence_note)}</em>` : ""}</div>`
-        )
-        .join("")
-    : `<div class="card-subtitle">Add an evidence note when logging actions to highlight breakthroughs here.</div>`;
+  if (highEl) {
+    highEl.innerHTML = auto_summary.strongest_candidates.length
+      ? auto_summary.strongest_candidates
+          .map(
+            (c) =>
+              `<div>${iconSvg("star", 12)} <strong>${escapeHtml(c.title)}</strong> (${escapeHtml(c.timestamp_display || c.action_date)}) ${c.evidence_note ? `- <em>${escapeHtml(c.evidence_note)}</em>` : ""}</div>`
+          )
+          .join("")
+      : `<div class="card-subtitle">Add an evidence note when logging actions to highlight breakthroughs here.</div>`;
+  }
 
   const qContainer = document.getElementById("reviewQuestionsContainer");
   qContainer.innerHTML = "";
@@ -809,9 +891,6 @@ function renderWeeklyReview() {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Markdown Guidance View (External .md Files + Live Editor)                  */
-/* -------------------------------------------------------------------------- */
 function simpleMarkdownToHtml(md) {
   const lines = String(md || "").split(/\r?\n/);
   let html = "";
@@ -956,9 +1035,6 @@ function renderGuidanceView() {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Extend & Configure View (Identities, Habits & Settings)                    */
-/* -------------------------------------------------------------------------- */
 function renderManageView() {
   const listEl = document.getElementById("manageIdentitiesList");
   listEl.innerHTML = "";
@@ -1047,9 +1123,6 @@ function renderManageView() {
   document.getElementById("settingQuestionsTextarea").value = (settings.reflection_questions || []).join("\n");
 }
 
-/* -------------------------------------------------------------------------- */
-/* Modals for Extending Identities & Habits                                   */
-/* -------------------------------------------------------------------------- */
 function openIdentityModal(ident = null) {
   const modal = document.getElementById("identityModal");
   document.getElementById("identityModalTitle").textContent = ident ? "Edit Identity" : "New Identity";
@@ -1071,19 +1144,178 @@ function openIdentityModal(ident = null) {
   modal.hidden = false;
 }
 
+function updateHabitModalCategoryUI() {
+  const cat = document.getElementById("habitModalCategory").value;
+  const isAnti = cat === "anti_identity_guard";
+
+  const subtitleEl = document.getElementById("habitModalSubtitle");
+  if (subtitleEl) {
+    subtitleEl.textContent = isAnti
+      ? "Define an anti-identity guardrail using the 4 Inversions to break bad habits"
+      : "Define behavior according to Atomic Habits 4 Laws";
+  }
+  const titleLabelEl = document.getElementById("habitModalTitleLabel");
+  if (titleLabelEl) {
+    titleLabelEl.textContent = isAnti ? "Boundary / Guardrail Description" : "Habit Description";
+  }
+
+  const trigIcon = document.getElementById("habitTriggerIcon");
+  if (trigIcon) trigIcon.innerHTML = isAnti ? iconSvg("eyeOff", 16) : iconSvg("eye", 16);
+  const trigTitle = document.getElementById("habitTriggerSectionTitle");
+  if (trigTitle) {
+    trigTitle.textContent = isAnti
+      ? "Rule 1: Make It Invisible (Cue Elimination)"
+      : "Rule 1: Make It Obvious (Cue & Implementation)";
+  }
+  const trigSub = document.getElementById("habitTriggerSectionSubtitle");
+  if (trigSub) {
+    trigSub.textContent = isAnti
+      ? "Remove environmental cues, hide feeds, and keep friction high"
+      : "Specify when and where or anchor to an existing routine";
+  }
+
+  const lawsIcon = document.getElementById("habitLawsIcon");
+  if (lawsIcon) lawsIcon.innerHTML = isAnti ? iconSvg("shieldAlert", 16) : iconSvg("bolt", 16);
+  const lawsTitle = document.getElementById("habitLawsHeaderTitle");
+  if (lawsTitle) {
+    lawsTitle.textContent = isAnti
+      ? "Inversion of the 4 Laws - How to Break Bad Habits"
+      : "Atomic Habits - The 4 Laws of Behavior Change";
+  }
+  const lawsSub = document.getElementById("habitLawsHeaderSubtitle");
+  if (lawsSub) {
+    lawsSub.textContent = isAnti
+      ? "Invert the laws backwards: Invisible, Unattractive, Difficult, Unsatisfying"
+      : "Designed to make good habits effortless and durable";
+  }
+
+  const r1Label = document.getElementById("habitRule1Label");
+  if (r1Label) {
+    r1Label.textContent = isAnti
+      ? "Inversion 1: Make It Invisible (Out-of-Sight Strategy)"
+      : "Law 1: Make It Obvious (Cue & Visibility Strategy)";
+  }
+  const r1Input = document.getElementById("habitModalRule1");
+  if (r1Input) {
+    r1Input.placeholder = isAnti
+      ? "e.g., Charge phone outside bedroom; remove bookmark shortcuts and feed icons"
+      : "e.g., Keep book on pillow; place gym clothes next to bed";
+  }
+
+  const r2Label = document.getElementById("habitRule2Label");
+  if (r2Label) {
+    r2Label.textContent = isAnti
+      ? "Inversion 2: Make It Unattractive (Real Consequences & Cost)"
+      : "Law 2: Make It Attractive (Temptation Bundling / Mindset)";
+  }
+  const r2Input = document.getElementById("habitModalRule2");
+  if (r2Input) {
+    r2Input.placeholder = isAnti
+      ? "e.g., Notice mental fog, lost agency, and tired mornings when giving in"
+      : "e.g., After finishing 30m of deep work, enjoy favorite tea or music";
+  }
+
+  const r3Label = document.getElementById("habitRule3Label");
+  if (r3Label) {
+    r3Label.textContent = isAnti
+      ? "Inversion 3: Make It Difficult (Add Barriers & Friction)"
+      : "Law 3: Make It Easy (Two-Minute Rule Starter Version)";
+  }
+  const r3Input = document.getElementById("habitModalTwoMinInput");
+  if (r3Input) {
+    r3Input.placeholder = isAnti
+      ? "e.g., 2-minute reset: log out of account, enable 60-second delay blocker"
+      : "e.g., Open the workspace and write 2 sentences (<120 seconds)";
+  }
+
+  const r4Label = document.getElementById("habitRule4Label");
+  if (r4Label) {
+    r4Label.textContent = isAnti
+      ? "Inversion 4: Make It Unsatisfying (Immediate Penalty & Tracking)"
+      : "Law 4: Make It Satisfying (Immediate Reward & Evidence)";
+  }
+  const r4Input = document.getElementById("habitModalRule4");
+  if (r4Input) {
+    r4Input.placeholder = isAnti
+      ? "e.g., Log slips immediately as an obstacle; share slip with accountability partner"
+      : "e.g., Cast an identity vote immediately; celebrate the small win";
+  }
+
+  updateTriggerFormulaPreview();
+}
+
+function updateHabitModalTriggerFields() {
+  const triggerType = document.getElementById("habitModalTriggerType")?.value || "none";
+  const timeLocEl = document.getElementById("triggerFieldsTimeLoc");
+  const stackEl = document.getElementById("triggerFieldsHabitStack");
+  const cueEl = document.getElementById("triggerFieldsVisualCue");
+
+  if (timeLocEl) timeLocEl.hidden = triggerType !== "time_location";
+  if (stackEl) stackEl.hidden = triggerType !== "habit_stack";
+  if (cueEl) cueEl.hidden = triggerType !== "visual_cue";
+
+  updateTriggerFormulaPreview();
+}
+
+function updateTriggerFormulaPreview() {
+  const triggerType = document.getElementById("habitModalTriggerType")?.value || "none";
+  const previewWrap = document.getElementById("triggerPreviewWrap");
+  const previewText = document.getElementById("triggerPreviewText");
+  const title = document.getElementById("habitModalTitleInput")?.value.trim() || "[HABIT]";
+  const isAnti = document.getElementById("habitModalCategory")?.value === "anti_identity_guard";
+
+  if (!previewWrap || !previewText) return;
+
+  if (triggerType === "time_location") {
+    const time = document.getElementById("habitModalTriggerTime")?.value.trim() || "[TIME]";
+    const loc = document.getElementById("habitModalTriggerLocation")?.value.trim() || "[LOCATION]";
+    previewText.textContent = isAnti
+      ? `“At ${time} in ${loc}, I will protect my boundary against ${title}.”`
+      : `“I will perform ${title} at ${time} in ${loc}.”`;
+    previewWrap.hidden = false;
+  } else if (triggerType === "habit_stack") {
+    const anchor = document.getElementById("habitModalTriggerAnchor")?.value.trim() || "[CURRENT ROUTINE]";
+    previewText.textContent = isAnti
+      ? `“After I ${anchor}, I will guard against ${title}.”`
+      : `“After I ${anchor}, I will perform ${title}.”`;
+    previewWrap.hidden = false;
+  } else if (triggerType === "visual_cue") {
+    const cue = document.getElementById("habitModalTriggerCue")?.value.trim() || "[ENVIRONMENT CUE]";
+    previewText.textContent = isAnti
+      ? `“Make Invisible: remove cue (${cue}) to prevent ${title}.”`
+      : `“When I see cue (${cue}), I will perform ${title}.”`;
+    previewWrap.hidden = false;
+  } else {
+    previewWrap.hidden = true;
+  }
+}
+
 function openHabitModal(habit = null, defaultIdentityIds = [], defaultCategory = "identity_habit") {
   const modal = document.getElementById("habitModal");
   document.getElementById("habitModalTitle").textContent = habit ? "Edit Recurring Habit / Guardrail" : "New Recurring Habit";
   document.getElementById("habitModalId").value = habit ? habit.id : "";
   document.getElementById("habitModalTitleInput").value = habit ? habit.title : "";
-  document.getElementById("habitModalTwoMinInput").value = habit ? habit.two_minute_version : "";
+  document.getElementById("habitModalTwoMinInput").value = habit ? (habit.two_minute_version || habit.rule3_easy || "") : "";
   document.getElementById("habitModalCadence").value = habit ? habit.cadence : "daily";
   document.getElementById("habitModalCategory").value = habit ? habit.category : defaultCategory;
+
+  document.getElementById("habitModalTriggerType").value = habit?.trigger_type || "none";
+  document.getElementById("habitModalTriggerTime").value = habit?.trigger_time || "";
+  document.getElementById("habitModalTriggerLocation").value = habit?.trigger_location || "";
+  document.getElementById("habitModalTriggerAnchor").value = habit?.trigger_anchor || "";
+  document.getElementById("habitModalTriggerCue").value = habit?.trigger_cue || "";
+
+  document.getElementById("habitModalRule1").value = habit?.rule1_obvious || "";
+  document.getElementById("habitModalRule2").value = habit?.rule2_attractive || "";
+  document.getElementById("habitModalRule4").value = habit?.rule4_satisfying || "";
 
   state.modalHabitIdentities = new Set(
     habit ? habit.identity_ids : defaultIdentityIds.length ? defaultIdentityIds : [state.data.identities[0]?.id].filter(Boolean)
   );
   renderHabitModalIdentityPills();
+  updateHabitModalCategoryUI();
+  updateHabitModalTriggerFields();
+
   modal.hidden = false;
 }
 
@@ -1108,9 +1340,6 @@ function renderHabitModalIdentityPills() {
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Event Wiring                                                               */
-/* -------------------------------------------------------------------------- */
 function switchView(viewName) {
   state.view = viewName;
   document.querySelectorAll(".nav-tab").forEach((t) => {
@@ -1121,6 +1350,80 @@ function switchView(viewName) {
   });
   if (viewName === "guidance" && state.guidanceDocs.length === 0) {
     loadGuidance();
+  }
+}
+
+let activeImportMode = "replace";
+
+async function exportJsonData() {
+  try {
+    if (window.electronAPI && window.electronAPI.exportJson) {
+      const res = await window.electronAPI.exportJson();
+      if (res && res.saved) {
+        showToast(`Exported to ${res.filePath}`);
+        return;
+      }
+    }
+
+    const data = await api("/api/export");
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStr = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `identity_os_backup_${dateStr}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Exported database to JSON file");
+  } catch (err) {
+    console.error("JSON Export Error:", err);
+    showToast(`Export failed: ${err.message}`);
+  }
+}
+
+function triggerImportJson(mode = "replace") {
+  activeImportMode = mode;
+  if (window.electronAPI && window.electronAPI.importJson) {
+    window.electronAPI
+      .importJson(mode)
+      .then((res) => {
+        if (res && res.imported) {
+          showToast(`Imported successfully (${res.mode} mode)`);
+          loadState();
+        }
+      })
+      .catch((err) => {
+        console.error("JSON Import Error:", err);
+        showToast(`Import error: ${err.message}`);
+      });
+    return;
+  }
+  const input = document.getElementById("importJsonFileInput");
+  if (input) {
+    input.value = "";
+    input.click();
+  }
+}
+
+async function handleImportJsonFile(file, mode = "replace") {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const res = await api("/api/import", {
+      method: "POST",
+      body: JSON.stringify({ mode, data: parsed.data || parsed }),
+    });
+    showToast(
+      `Import successful (${mode} mode): ${res.habits_count || 0} habits, ${res.identities_count || 0} identities`
+    );
+    await loadState();
+  } catch (err) {
+    console.error("JSON Import File Error:", err);
+    showToast(`Import failed: ${err.message}`);
   }
 }
 
@@ -1171,7 +1474,6 @@ document.addEventListener("DOMContentLoaded", () => {
     loadState();
   });
 
-  // Quick-Capture kind switch (vote vs devote vs obstacle)
   document.querySelectorAll(".kind-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.captureKind = btn.dataset.kind;
@@ -1180,14 +1482,13 @@ document.addEventListener("DOMContentLoaded", () => {
       if (state.captureKind === "obstacle") {
         submitBtn.textContent = "Log Obstacle";
       } else if (state.captureKind === "devote") {
-        submitBtn.textContent = "Cast Devote (−1)";
+        submitBtn.textContent = "Cast Devote (-1)";
       } else {
         submitBtn.textContent = "Cast Vote";
       }
     });
   });
 
-  // Quick-Capture Submit
   document.getElementById("quickCaptureForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const titleEl = document.getElementById("actionTitleInput");
@@ -1213,7 +1514,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ? `Obstacle logged (${res.timestamp})`
         : state.captureKind === "devote"
         ? `Devote logged (${res.timestamp})`
-        : `Identity vote cast (${res.timestamp})!`
+        : `Identity vote cast (${res.timestamp})`
     );
     await loadState();
   });
@@ -1262,6 +1563,41 @@ document.addEventListener("DOMContentLoaded", () => {
     await loadState();
   });
 
+  // Habit modal dynamic category and trigger change events
+  const catEl = document.getElementById("habitModalCategory");
+  if (catEl) catEl.addEventListener("change", updateHabitModalCategoryUI);
+
+  const trigTypeEl = document.getElementById("habitModalTriggerType");
+  if (trigTypeEl) trigTypeEl.addEventListener("change", updateHabitModalTriggerFields);
+
+  ["habitModalTriggerTime", "habitModalTriggerLocation", "habitModalTriggerAnchor", "habitModalTriggerCue", "habitModalTitleInput"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", updateTriggerFormulaPreview);
+  });
+
+  // Export / Import buttons
+  ["topExportJsonBtn", "manageExportJsonBtn"].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.addEventListener("click", exportJsonData);
+  });
+
+  ["topImportJsonBtn", "manageImportJsonBtn"].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.addEventListener("click", () => triggerImportJson("replace"));
+  });
+
+  const mergeBtn = document.getElementById("manageMergeJsonBtn");
+  if (mergeBtn) mergeBtn.addEventListener("click", () => triggerImportJson("merge"));
+
+  const fileInput = document.getElementById("importJsonFileInput");
+  if (fileInput) {
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleImportJsonFile(e.target.files[0], activeImportMode);
+      }
+    });
+  }
+
   document.getElementById("habitModalForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("habitModalId").value;
@@ -1270,6 +1606,15 @@ document.addEventListener("DOMContentLoaded", () => {
       two_minute_version: document.getElementById("habitModalTwoMinInput").value,
       cadence: document.getElementById("habitModalCadence").value,
       category: document.getElementById("habitModalCategory").value,
+      trigger_type: document.getElementById("habitModalTriggerType").value,
+      trigger_time: document.getElementById("habitModalTriggerTime").value,
+      trigger_location: document.getElementById("habitModalTriggerLocation").value,
+      trigger_anchor: document.getElementById("habitModalTriggerAnchor").value,
+      trigger_cue: document.getElementById("habitModalTriggerCue").value,
+      rule1_obvious: document.getElementById("habitModalRule1").value,
+      rule2_attractive: document.getElementById("habitModalRule2").value,
+      rule3_easy: document.getElementById("habitModalTwoMinInput").value,
+      rule4_satisfying: document.getElementById("habitModalRule4").value,
       identity_ids: Array.from(state.modalHabitIdentities),
     };
     if (id) {
@@ -1322,8 +1667,8 @@ document.addEventListener("DOMContentLoaded", () => {
         system_checks: checks,
       }),
     });
-    document.getElementById("reviewSaveStatus").textContent = `✓ Saved (${res.review_date}) & pinned to Dashboard`;
-    showToast("Weekly review saved!");
+    document.getElementById("reviewSaveStatus").textContent = `Saved (${res.review_date}) & pinned to Dashboard`;
+    showToast("Weekly review saved");
     await loadState();
   });
 
@@ -1363,7 +1708,7 @@ document.addEventListener("DOMContentLoaded", () => {
         reflection_questions: questions,
       }),
     });
-    document.getElementById("settingsSaveStatus").textContent = "✓ Saved settings";
+    document.getElementById("settingsSaveStatus").textContent = "Saved settings";
     showToast("System settings updated");
     await loadState();
   });
