@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Identity Building OS 
+Identity Building OS
 Based on Atomic Habits by James Clear.
 """
 
@@ -20,12 +20,53 @@ from pathlib import Path
 from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parent
-DEFAULT_DB_PATH = Path(os.environ.get("IDENTITY_OS_DB_PATH", ROOT_DIR / "data" / "identity_os.db")).resolve()
-DEFAULT_TEMPLATE_PATH = Path(os.environ.get("IDENTITY_OS_TEMPLATE_PATH", ROOT_DIR / "seed_template.json")).resolve()
-GUIDANCE_DIR = Path(os.environ.get("IDENTITY_OS_GUIDANCE_DIR", ROOT_DIR / "guidance")).resolve()
-STATIC_DIR = Path(os.environ.get("IDENTITY_OS_STATIC_DIR", ROOT_DIR / "static")).resolve()
-DEFAULT_HOST = os.environ.get("IDENTITY_OS_HOST", "127.0.0.1")
-DEFAULT_PORT = int(os.environ.get("PORT", "8765"))
+
+
+def load_dotenv_file(dotenv_path: Path) -> None:
+    if not dotenv_path.is_file():
+        return
+    for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        key = key.strip()
+        val = val.strip().strip("'").strip('"')
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+load_dotenv_file(ROOT_DIR / ".env")
+
+
+def require_env_str(name: str) -> str:
+    val = os.environ.get(name, "").strip()
+    if not val:
+        raise RuntimeError(
+            f"Missing required configuration '{name}'. Set it in .env or environment variables (see .env.example)."
+        )
+    return val
+
+
+def require_env_path(name: str) -> Path:
+    raw = require_env_str(name)
+    p = Path(raw)
+    return p.resolve() if p.is_absolute() else (ROOT_DIR / p).resolve()
+
+
+def require_env_int(name: str) -> int:
+    raw = require_env_str(name)
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid integer configuration for '{name}': {raw!r}") from exc
+
+
+DEFAULT_DB_PATH = require_env_path("IDENTITY_OS_DB_PATH")
+GUIDANCE_DIR = require_env_path("IDENTITY_OS_GUIDANCE_DIR")
+STATIC_DIR = require_env_path("IDENTITY_OS_STATIC_DIR")
+DEFAULT_HOST = require_env_str("IDENTITY_OS_HOST")
+DEFAULT_PORT = require_env_int("PORT")
 
 PALETTE_SLOTS = [
     {"light": "#2a78d6", "dark": "#3987e5"},
@@ -40,8 +81,10 @@ PALETTE_SLOTS = [
 
 
 def slugify(text: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", text.strip().lower()).strip("_")
-    return slug or f"item_{int(dt.datetime.now().timestamp() * 1000)}"
+    slug = re.sub(r"[^a-z0-9]+", "_", str(text or "").strip().lower()).strip("_")
+    if not slug:
+        raise ValueError("Identifier or name must contain at least one alphanumeric character.")
+    return slug
 
 
 def get_monday(date_str: str | None = None) -> dt.date:
@@ -102,12 +145,6 @@ def connect_db(db_path: Path = DEFAULT_DB_PATH):
         conn.close()
 
 
-def derive_two_minute_starter(habit_title: str) -> str:
-    """Generate a sensible default 2-Minute Rule starter from a habit description."""
-    cleaned = re.sub(r"^I\s+", "", habit_title.strip(), flags=re.IGNORECASE).rstrip(".")
-    return f"Spend 2 minutes starting: {cleaned[:1].lower() + cleaned[1:]}"
-
-
 def _ensure_action_time_columns(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(actions)").fetchall()}
     current_year = dt.datetime.now().year
@@ -128,11 +165,6 @@ def _ensure_action_time_columns(conn: sqlite3.Connection) -> None:
 def _ensure_habit_rule_columns(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(habits)").fetchall()}
     needed = [
-        ("trigger_type", "TEXT NOT NULL DEFAULT 'none'"),
-        ("trigger_time", "TEXT NOT NULL DEFAULT ''"),
-        ("trigger_location", "TEXT NOT NULL DEFAULT ''"),
-        ("trigger_anchor", "TEXT NOT NULL DEFAULT ''"),
-        ("trigger_cue", "TEXT NOT NULL DEFAULT ''"),
         ("rule1_obvious", "TEXT NOT NULL DEFAULT ''"),
         ("rule2_attractive", "TEXT NOT NULL DEFAULT ''"),
         ("rule3_easy", "TEXT NOT NULL DEFAULT ''"),
@@ -143,21 +175,11 @@ def _ensure_habit_rule_columns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE habits ADD COLUMN {col_name} {col_def}")
 
 
-def init_db(
-    db_path: Path = DEFAULT_DB_PATH,
-    template_path: Path | None = DEFAULT_TEMPLATE_PATH,
-    seed_defaults: bool = True,
-    seed_examples: bool = False,
-) -> None:
+def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
     current_year = dt.datetime.now().year
     with connect_db(db_path) as conn:
         conn.executescript(
             f"""
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value_json TEXT NOT NULL
-            );
-
             CREATE TABLE IF NOT EXISTS identities (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -178,11 +200,6 @@ def init_db(
                 category TEXT NOT NULL DEFAULT 'identity_habit',
                 sort_order INTEGER NOT NULL DEFAULT 1,
                 active INTEGER NOT NULL DEFAULT 1,
-                trigger_type TEXT NOT NULL DEFAULT 'none',
-                trigger_time TEXT NOT NULL DEFAULT '',
-                trigger_location TEXT NOT NULL DEFAULT '',
-                trigger_anchor TEXT NOT NULL DEFAULT '',
-                trigger_cue TEXT NOT NULL DEFAULT '',
                 rule1_obvious TEXT NOT NULL DEFAULT '',
                 rule2_attractive TEXT NOT NULL DEFAULT '',
                 rule3_easy TEXT NOT NULL DEFAULT '',
@@ -233,23 +250,6 @@ def init_db(
         )
         _ensure_action_time_columns(conn)
         _ensure_habit_rule_columns(conn)
-        existing_identities = conn.execute("SELECT COUNT(*) FROM identities").fetchone()[0]
-
-    if existing_identities == 0 and seed_defaults and template_path and template_path.is_file():
-        template_content = template_path.read_text(encoding="utf-8")
-        template_data = json.loads(template_content)
-        import_database_from_dict(template_data, db_path=db_path, guidance_dir=GUIDANCE_DIR, mode="merge")
-
-
-def get_settings(conn: sqlite3.Connection) -> dict[str, Any]:
-    rows = conn.execute("SELECT key, value_json FROM settings").fetchall()
-    out: dict[str, Any] = {}
-    for r in rows:
-        try:
-            out[r["key"]] = json.loads(r["value_json"])
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Corrupted JSON in settings for key '{r['key']}': {r['value_json']}") from exc
-    return out
 
 
 def compute_identity_distribution(
@@ -516,7 +516,6 @@ def get_app_state(
     with connect_db(db_path) as conn:
         _ensure_action_time_columns(conn)
         _ensure_habit_rule_columns(conn)
-        settings = get_settings(conn)
         ident_rows = conn.execute(
             "SELECT * FROM identities WHERE archived = 0 ORDER BY sort_order ASC, name ASC"
         ).fetchall()
@@ -683,7 +682,6 @@ def get_app_state(
         "week_start": monday_str,
         "week_end": sunday_str,
         "scope": scope,
-        "settings": settings,
         "palette_slots": PALETTE_SLOTS,
         "identities": identities,
         "habits": habits,
@@ -705,7 +703,7 @@ def create_identity(payload: dict[str, Any], db_path: Path = DEFAULT_DB_PATH) ->
     name = str(payload.get("name") or "").strip()
     if not name:
         raise ValueError("Identity name is required.")
-    tagline = str(payload.get("tagline") or f"Votes supporting {name}").strip()
+    tagline = str(payload.get("tagline") or "").strip()
     domain = str(payload.get("domain") or "general").strip()
     current_stage = str(payload.get("current_stage") or "Building evidence").strip()
 
@@ -773,14 +771,12 @@ def delete_identity(identity_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict[s
     """
     with connect_db(db_path) as conn:
         conn.execute("DELETE FROM identities WHERE id = ?", (identity_id,))
-        # Remove habits that no longer have any linked identities
         conn.execute(
             """
             DELETE FROM habits
             WHERE id NOT IN (SELECT DISTINCT habit_id FROM habit_identities)
             """
         )
-        # Remove actions in logs that no longer have any linked identities
         conn.execute(
             """
             DELETE FROM actions
@@ -794,21 +790,16 @@ def create_habit(payload: dict[str, Any], db_path: Path = DEFAULT_DB_PATH) -> di
     title = str(payload.get("title") or "").strip()
     if not title:
         raise ValueError("Habit title is required.")
-    two_min = str(payload.get("two_minute_version") or "").strip() or derive_two_minute_starter(title)
+    two_min = str(payload.get("two_minute_version") or payload.get("rule3_easy") or "").strip()
     cadence = str(payload.get("cadence") or "daily").strip()
     category = str(payload.get("category") or "identity_habit").strip()
     identity_ids = list(payload.get("identity_ids") or [])
     if not identity_ids:
         raise ValueError("At least one identity is required for a habit.")
 
-    trigger_type = str(payload.get("trigger_type") or "none").strip()
-    trigger_time = str(payload.get("trigger_time") or "").strip()
-    trigger_location = str(payload.get("trigger_location") or "").strip()
-    trigger_anchor = str(payload.get("trigger_anchor") or "").strip()
-    trigger_cue = str(payload.get("trigger_cue") or "").strip()
     rule1_obvious = str(payload.get("rule1_obvious") or "").strip()
     rule2_attractive = str(payload.get("rule2_attractive") or "").strip()
-    rule3_easy = str(payload.get("rule3_easy") or "").strip() or two_min
+    rule3_easy = str(payload.get("rule3_easy") or two_min).strip()
     rule4_satisfying = str(payload.get("rule4_satisfying") or "").strip()
 
     habit_id = f"habit_{int(dt.datetime.now().timestamp() * 1000)}_{slugify(title)[:18]}"
@@ -819,10 +810,9 @@ def create_habit(payload: dict[str, Any], db_path: Path = DEFAULT_DB_PATH) -> di
             """
             INSERT INTO habits (
                 id, title, cadence, two_minute_version, category, sort_order, active,
-                trigger_type, trigger_time, trigger_location, trigger_anchor, trigger_cue,
                 rule1_obvious, rule2_attractive, rule3_easy, rule4_satisfying
             )
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
             """,
             (
                 habit_id,
@@ -831,11 +821,6 @@ def create_habit(payload: dict[str, Any], db_path: Path = DEFAULT_DB_PATH) -> di
                 two_min,
                 category,
                 max_order + 1,
-                trigger_type,
-                trigger_time,
-                trigger_location,
-                trigger_anchor,
-                trigger_cue,
                 rule1_obvious,
                 rule2_attractive,
                 rule3_easy,
@@ -864,27 +849,22 @@ def update_habit(
         title = str(payload.get("title", row["title"])).strip()
         if not title:
             raise ValueError("Habit title cannot be empty.")
-        two_min = str(payload.get("two_minute_version", row["two_minute_version"])).strip()
+        row_keys = row.keys()
+        existing_r3 = row["rule3_easy"] if "rule3_easy" in row_keys else ""
+        two_min = str(payload.get("two_minute_version", payload.get("rule3_easy", row["two_minute_version"]))).strip()
         cadence = str(payload.get("cadence", row["cadence"])).strip()
         category = str(payload.get("category", row["category"])).strip()
         active = 1 if payload.get("active", bool(row["active"])) else 0
 
-        row_keys = row.keys()
-        trigger_type = str(payload.get("trigger_type", row["trigger_type"] if "trigger_type" in row_keys else "none")).strip()
-        trigger_time = str(payload.get("trigger_time", row["trigger_time"] if "trigger_time" in row_keys else "")).strip()
-        trigger_location = str(payload.get("trigger_location", row["trigger_location"] if "trigger_location" in row_keys else "")).strip()
-        trigger_anchor = str(payload.get("trigger_anchor", row["trigger_anchor"] if "trigger_anchor" in row_keys else "")).strip()
-        trigger_cue = str(payload.get("trigger_cue", row["trigger_cue"] if "trigger_cue" in row_keys else "")).strip()
         rule1_obvious = str(payload.get("rule1_obvious", row["rule1_obvious"] if "rule1_obvious" in row_keys else "")).strip()
         rule2_attractive = str(payload.get("rule2_attractive", row["rule2_attractive"] if "rule2_attractive" in row_keys else "")).strip()
-        rule3_easy = str(payload.get("rule3_easy", row["rule3_easy"] if "rule3_easy" in row_keys else "")).strip()
+        rule3_easy = str(payload.get("rule3_easy", two_min if "two_minute_version" in payload else existing_r3)).strip()
         rule4_satisfying = str(payload.get("rule4_satisfying", row["rule4_satisfying"] if "rule4_satisfying" in row_keys else "")).strip()
 
         conn.execute(
             """
             UPDATE habits
             SET title = ?, two_minute_version = ?, cadence = ?, category = ?, active = ?,
-                trigger_type = ?, trigger_time = ?, trigger_location = ?, trigger_anchor = ?, trigger_cue = ?,
                 rule1_obvious = ?, rule2_attractive = ?, rule3_easy = ?, rule4_satisfying = ?
             WHERE id = ?
             """,
@@ -894,11 +874,6 @@ def update_habit(
                 cadence,
                 category,
                 active,
-                trigger_type,
-                trigger_time,
-                trigger_location,
-                trigger_anchor,
-                trigger_cue,
                 rule1_obvious,
                 rule2_attractive,
                 rule3_easy,
@@ -1183,21 +1158,6 @@ def save_weekly_review(
     return {"week_start": monday_str, "review_date": review_date, "status": "saved"}
 
 
-def update_settings(payload: dict[str, Any], db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
-    """Allow extending/customizing reflection questions, stages, or anti-identity principle."""
-    with connect_db(db_path) as conn:
-        for key in ("stages", "reflection_questions", "anti_principle", "system_checks"):
-            if key in payload:
-                conn.execute(
-                    """
-                    INSERT INTO settings (key, value_json) VALUES (?, ?)
-                    ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
-                    """,
-                    (key, json.dumps(payload[key])),
-                )
-    return {"status": "updated"}
-
-
 def load_guidance_documents(guidance_dir: Path = GUIDANCE_DIR) -> list[dict[str, Any]]:
     """Dynamically discover all Markdown (.md) files in guidance_dir."""
     guidance_dir.mkdir(parents=True, exist_ok=True)
@@ -1255,108 +1215,100 @@ def delete_guidance_document(doc_id: str, guidance_dir: Path = GUIDANCE_DIR) -> 
 
 def export_database_to_dict(
     db_path: Path = DEFAULT_DB_PATH,
-    guidance_dir: Path = GUIDANCE_DIR,
+    guidance_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Export complete Identity OS database and guidance docs to structured JSON dictionary."""
+    """
+    Export only the user's Identities and Habits (with their 4 rules and linked identities)
+    for saving or sharing setups without exposing or touching action history or reviews.
+    """
     with connect_db(db_path) as conn:
-        _ensure_action_time_columns(conn)
         _ensure_habit_rule_columns(conn)
-        settings = get_settings(conn)
         ident_rows = conn.execute(
-            "SELECT * FROM identities ORDER BY sort_order ASC, name ASC"
+            """
+            SELECT id, name, tagline, domain, color_light, color_dark, current_stage, sort_order, archived
+            FROM identities
+            ORDER BY sort_order ASC, name ASC
+            """
         ).fetchall()
         identities = [dict(r) for r in ident_rows]
 
         habit_rows = conn.execute(
-            "SELECT * FROM habits ORDER BY sort_order ASC, title ASC"
+            """
+            SELECT id, title, cadence, two_minute_version, category, sort_order, active,
+                   rule1_obvious, rule2_attractive, rule3_easy, rule4_satisfying
+            FROM habits
+            ORDER BY sort_order ASC, title ASC
+            """
         ).fetchall()
         habit_links = conn.execute("SELECT habit_id, identity_id FROM habit_identities").fetchall()
         h_map: dict[str, list[str]] = {}
         for hl in habit_links:
             h_map.setdefault(hl["habit_id"], []).append(hl["identity_id"])
+
         habits = []
         for hr in habit_rows:
             hd = dict(hr)
             hd["identity_ids"] = h_map.get(hr["id"], [])
             habits.append(hd)
 
-        action_rows = conn.execute(
-            "SELECT * FROM actions ORDER BY action_date DESC, action_time DESC, id DESC"
-        ).fetchall()
-        action_links = conn.execute("SELECT action_id, identity_id FROM action_identities").fetchall()
-        a_map: dict[int, list[str]] = {}
-        for al in action_links:
-            a_map.setdefault(al["action_id"], []).append(al["identity_id"])
-        actions = []
-        for ar in action_rows:
-            ad = dict(ar)
-            ad["identity_ids"] = a_map.get(ar["id"], [])
-            actions.append(ad)
-
-        review_rows = conn.execute(
-            "SELECT * FROM weekly_reviews ORDER BY week_start DESC"
-        ).fetchall()
-        reviews = []
-        for rr in review_rows:
-            rd = dict(rr)
-            raw_answers = rd.pop("answers_json", None)
-            rd["answers"] = json.loads(raw_answers) if raw_answers else {}
-            raw_checks = rd.pop("system_checks_json", None)
-            rd["system_checks"] = json.loads(raw_checks) if raw_checks else {}
-            reviews.append(rd)
-
-        guidance = load_guidance_documents(guidance_dir)
-
         return {
             "schema_version": 1,
             "exported_at": dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-            "settings": settings,
             "identities": identities,
             "habits": habits,
-            "actions": actions,
-            "weekly_reviews": reviews,
-            "guidance": guidance,
         }
 
 
 def import_database_from_dict(
     payload: dict[str, Any],
     db_path: Path = DEFAULT_DB_PATH,
-    guidance_dir: Path = GUIDANCE_DIR,
-    mode: str = "replace",
+    guidance_dir: Path | None = None,
+    mode: str = "merge",
 ) -> dict[str, Any]:
+    """
+    Import only Identities and Habits.
+    Never modifies or deletes user actions, weekly reviews, or guidance documents.
+    """
     if not isinstance(payload, dict):
         raise ValueError("Invalid import payload: expected a JSON object.")
+    if mode not in ("merge", "replace"):
+        raise ValueError(f"Invalid import mode '{mode}': expected 'merge' or 'replace'.")
 
     identities = payload.get("identities") or []
     habits = payload.get("habits") or []
-    actions = payload.get("actions") or []
-    weekly_reviews = payload.get("weekly_reviews") or []
-    settings = payload.get("settings") or {}
-    guidance = payload.get("guidance") or []
 
     with connect_db(db_path) as conn:
-        _ensure_action_time_columns(conn)
         _ensure_habit_rule_columns(conn)
 
         if mode == "replace":
-            conn.execute("DELETE FROM action_identities")
-            conn.execute("DELETE FROM actions")
-            conn.execute("DELETE FROM habit_identities")
-            conn.execute("DELETE FROM habits")
-            conn.execute("DELETE FROM identities")
-            conn.execute("DELETE FROM weekly_reviews")
+            incoming_habit_ids = {h["id"] for h in habits if isinstance(h, dict) and h.get("id")}
+            if incoming_habit_ids:
+                placeholders = ",".join("?" for _ in incoming_habit_ids)
+                conn.execute(
+                    f"DELETE FROM habits WHERE id NOT IN ({placeholders})",
+                    tuple(incoming_habit_ids),
+                )
+            elif identities:
+                conn.execute("DELETE FROM habits")
 
-        for k, v in settings.items():
-            conn.execute(
-                """
-                INSERT INTO settings (key, value_json) VALUES (?, ?)
-                ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
-                """,
-                (k, json.dumps(v)),
-            )
+            incoming_ident_ids = {i["id"] for i in identities if isinstance(i, dict) and i.get("id")}
+            if incoming_ident_ids:
+                placeholders = ",".join("?" for _ in incoming_ident_ids)
+                conn.execute(
+                    f"""
+                    DELETE FROM identities
+                    WHERE id NOT IN ({placeholders})
+                      AND id NOT IN (SELECT DISTINCT identity_id FROM action_identities)
+                    """,
+                    tuple(incoming_ident_ids),
+                )
 
-        for ident in identities:
+        for idx, ident in enumerate(identities, start=1):
+            raw_name = str(ident.get("name") or "").strip()
+            if not raw_name:
+                raise ValueError("Each imported identity must have a 'name'.")
+            ident_id = str(ident.get("id") or slugify(raw_name)).strip()
+            slot = PALETTE_SLOTS[(idx - 1) % len(PALETTE_SLOTS)]
             conn.execute(
                 """
                 INSERT INTO identities (id, name, tagline, domain, color_light, color_dark, current_stage, sort_order, archived)
@@ -1372,29 +1324,37 @@ def import_database_from_dict(
                     archived = excluded.archived
                 """,
                 {
-                    "id": ident["id"],
-                    "name": ident["name"],
-                    "tagline": ident.get("tagline", ""),
-                    "domain": ident.get("domain", "general"),
-                    "color_light": ident.get("color_light", "#2a78d6"),
-                    "color_dark": ident.get("color_dark", "#3987e5"),
-                    "current_stage": ident.get("current_stage", "Building evidence"),
-                    "sort_order": ident.get("sort_order", 1),
+                    "id": ident_id,
+                    "name": raw_name,
+                    "tagline": str(ident.get("tagline") or "").strip(),
+                    "domain": str(ident.get("domain") or "general").strip(),
+                    "color_light": str(ident.get("color_light") or slot["light"]).strip(),
+                    "color_dark": str(ident.get("color_dark") or slot["dark"]).strip(),
+                    "current_stage": str(ident.get("current_stage") or "Building evidence").strip(),
+                    "sort_order": int(ident.get("sort_order", idx)),
                     "archived": 1 if ident.get("archived") else 0,
                 },
             )
 
-        for h in habits:
+        valid_ident_ids = {
+            r["id"] for r in conn.execute("SELECT id FROM identities").fetchall()
+        }
+
+        for idx, h in enumerate(habits, start=1):
+            raw_title = str(h.get("title") or "").strip()
+            if not raw_title:
+                raise ValueError("Each imported habit must have a 'title'.")
+            habit_id = str(h.get("id") or f"habit_{slugify(raw_title)[:24]}").strip()
+            two_min = str(h.get("two_minute_version") or h.get("rule3_easy") or "").strip()
+            rule3_easy = str(h.get("rule3_easy") or two_min).strip()
             conn.execute(
                 """
                 INSERT INTO habits (
                     id, title, cadence, two_minute_version, category, sort_order, active,
-                    trigger_type, trigger_time, trigger_location, trigger_anchor, trigger_cue,
                     rule1_obvious, rule2_attractive, rule3_easy, rule4_satisfying
                 )
                 VALUES (
                     :id, :title, :cadence, :two_minute_version, :category, :sort_order, :active,
-                    :trigger_type, :trigger_time, :trigger_location, :trigger_anchor, :trigger_cue,
                     :rule1_obvious, :rule2_attractive, :rule3_easy, :rule4_satisfying
                 )
                 ON CONFLICT(id) DO UPDATE SET
@@ -1404,144 +1364,32 @@ def import_database_from_dict(
                     category = excluded.category,
                     sort_order = excluded.sort_order,
                     active = excluded.active,
-                    trigger_type = excluded.trigger_type,
-                    trigger_time = excluded.trigger_time,
-                    trigger_location = excluded.trigger_location,
-                    trigger_anchor = excluded.trigger_anchor,
-                    trigger_cue = excluded.trigger_cue,
                     rule1_obvious = excluded.rule1_obvious,
                     rule2_attractive = excluded.rule2_attractive,
                     rule3_easy = excluded.rule3_easy,
                     rule4_satisfying = excluded.rule4_satisfying
                 """,
                 {
-                    "id": h["id"],
-                    "title": h["title"],
-                    "cadence": h.get("cadence", "daily"),
-                    "two_minute_version": h.get("two_minute_version", ""),
-                    "category": h.get("category", "identity_habit"),
-                    "sort_order": h.get("sort_order", 1),
+                    "id": habit_id,
+                    "title": raw_title,
+                    "cadence": str(h.get("cadence") or "daily").strip(),
+                    "two_minute_version": two_min,
+                    "category": str(h.get("category") or "identity_habit").strip(),
+                    "sort_order": int(h.get("sort_order", idx)),
                     "active": 1 if h.get("active", 1) else 0,
-                    "trigger_type": h.get("trigger_type", "none"),
-                    "trigger_time": h.get("trigger_time", ""),
-                    "trigger_location": h.get("trigger_location", ""),
-                    "trigger_anchor": h.get("trigger_anchor", ""),
-                    "trigger_cue": h.get("trigger_cue", ""),
-                    "rule1_obvious": h.get("rule1_obvious", ""),
-                    "rule2_attractive": h.get("rule2_attractive", ""),
-                    "rule3_easy": h.get("rule3_easy", ""),
-                    "rule4_satisfying": h.get("rule4_satisfying", ""),
+                    "rule1_obvious": str(h.get("rule1_obvious") or "").strip(),
+                    "rule2_attractive": str(h.get("rule2_attractive") or "").strip(),
+                    "rule3_easy": rule3_easy,
+                    "rule4_satisfying": str(h.get("rule4_satisfying") or "").strip(),
                 },
             )
-            conn.execute("DELETE FROM habit_identities WHERE habit_id = ?", (h["id"],))
-            for iid in h.get("identity_ids", []):
+            conn.execute("DELETE FROM habit_identities WHERE habit_id = ?", (habit_id,))
+            for iid in h.get("identity_ids") or []:
+                if iid not in valid_ident_ids:
+                    raise ValueError(f"Habit '{raw_title}' links to unknown identity '{iid}'.")
                 conn.execute(
                     "INSERT OR IGNORE INTO habit_identities (habit_id, identity_id) VALUES (?, ?)",
-                    (h["id"], iid),
-                )
-
-        for a in actions:
-            ts = build_timestamp_fields(a.get("action_date"))
-            aid = a.get("id")
-            if aid and mode == "replace":
-                conn.execute(
-                    """
-                    INSERT INTO actions (
-                        id, action_date, action_time, created_at, day, month, year, hour, minute, second,
-                        title, evidence_note, habit_id, kind, used_two_minute_rule
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        aid,
-                        a.get("action_date", ts["action_date"]),
-                        a.get("action_time", ts["action_time"]),
-                        a.get("created_at", ts["created_at"]),
-                        a.get("day", ts["day"]),
-                        a.get("month", ts["month"]),
-                        a.get("year", ts["year"]),
-                        a.get("hour", ts["hour"]),
-                        a.get("minute", ts["minute"]),
-                        a.get("second", ts["second"]),
-                        a.get("title", ""),
-                        a.get("evidence_note", ""),
-                        a.get("habit_id"),
-                        a.get("kind", "vote"),
-                        1 if a.get("used_two_minute_rule") else 0,
-                    ),
-                )
-                action_id = aid
-            else:
-                cur = conn.execute(
-                    """
-                    INSERT INTO actions (
-                        action_date, action_time, created_at, day, month, year, hour, minute, second,
-                        title, evidence_note, habit_id, kind, used_two_minute_rule
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        a.get("action_date", ts["action_date"]),
-                        a.get("action_time", ts["action_time"]),
-                        a.get("created_at", ts["created_at"]),
-                        a.get("day", ts["day"]),
-                        a.get("month", ts["month"]),
-                        a.get("year", ts["year"]),
-                        a.get("hour", ts["hour"]),
-                        a.get("minute", ts["minute"]),
-                        a.get("second", ts["second"]),
-                        a.get("title", ""),
-                        a.get("evidence_note", ""),
-                        a.get("habit_id"),
-                        a.get("kind", "vote"),
-                        1 if a.get("used_two_minute_rule") else 0,
-                    ),
-                )
-                action_id = cur.lastrowid
-
-            for iid in a.get("identity_ids", []):
-                conn.execute(
-                    "INSERT OR IGNORE INTO action_identities (action_id, identity_id) VALUES (?, ?)",
-                    (action_id, iid),
-                )
-
-        for rev in weekly_reviews:
-            answers_str = json.dumps(rev.get("answers", {}))
-            checks_str = json.dumps(rev.get("system_checks", {}))
-            conn.execute(
-                """
-                INSERT INTO weekly_reviews (
-                    week_start, review_date, answers_json, one_adjustment,
-                    strongest_evidence, next_smallest_action, overall_stage, system_checks_json
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(week_start) DO UPDATE SET
-                    review_date = excluded.review_date,
-                    answers_json = excluded.answers_json,
-                    one_adjustment = excluded.one_adjustment,
-                    strongest_evidence = excluded.strongest_evidence,
-                    next_smallest_action = excluded.next_smallest_action,
-                    overall_stage = excluded.overall_stage,
-                    system_checks_json = excluded.system_checks_json
-                """,
-                (
-                    rev["week_start"],
-                    rev.get("review_date", dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
-                    answers_str,
-                    rev.get("one_adjustment", ""),
-                    rev.get("strongest_evidence", ""),
-                    rev.get("next_smallest_action", ""),
-                    rev.get("overall_stage", "Building evidence"),
-                    checks_str,
-                ),
-            )
-
-    if guidance:
-        for doc in guidance:
-            if doc.get("id") and doc.get("markdown"):
-                save_guidance_document(
-                    {"id": doc["id"], "markdown": doc["markdown"]},
-                    guidance_dir=guidance_dir,
+                    (habit_id, iid),
                 )
 
     return {
@@ -1549,24 +1397,6 @@ def import_database_from_dict(
         "mode": mode,
         "identities_count": len(identities),
         "habits_count": len(habits),
-        "actions_count": len(actions),
-        "weekly_reviews_count": len(weekly_reviews),
-    }
-    if guidance:
-        for doc in guidance:
-            if doc.get("id") and doc.get("markdown"):
-                save_guidance_document(
-                    {"id": doc["id"], "markdown": doc["markdown"]},
-                    guidance_dir=guidance_dir,
-                )
-
-    return {
-        "status": "imported",
-        "mode": mode,
-        "identities_count": len(identities),
-        "habits_count": len(habits),
-        "actions_count": len(actions),
-        "weekly_reviews_count": len(weekly_reviews),
     }
 
 
@@ -1575,7 +1405,7 @@ class IdentityOSRequestHandler(BaseHTTPRequestHandler):
     guidance_dir: Path = GUIDANCE_DIR
 
     def log_message(self, format: str, *args: Any) -> None:
-        if os.environ.get("IDENTITY_OS_VERBOSE"):
+        if os.environ.get("IDENTITY_OS_VERBOSE") == "1" and sys.stderr is not None:
             super().log_message(format, *args)
 
     def _send_json(self, data: Any, status: int = 200) -> None:
@@ -1623,6 +1453,10 @@ class IdentityOSRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(export_data)
                 return
 
+            if path.startswith("/api/"):
+                self._send_json({"error": f"Unknown API endpoint: {path}"}, status=404)
+                return
+
             rel = "index.html" if path in ("/", "") else path.lstrip("/")
             target = (STATIC_DIR / rel).resolve()
             if not str(target).startswith(str(STATIC_DIR.resolve())) or not target.is_file():
@@ -1664,16 +1498,12 @@ class IdentityOSRequestHandler(BaseHTTPRequestHandler):
                 res = save_weekly_review(payload, db_path=self.db_path)
                 self._send_json(res, status=200)
                 return
-            if path == "/api/settings":
-                res = update_settings(payload, db_path=self.db_path)
-                self._send_json(res, status=200)
-                return
             if path == "/api/guidance":
                 res = save_guidance_document(payload, guidance_dir=self.guidance_dir)
                 self._send_json(res, status=201)
                 return
             if path == "/api/import":
-                mode = str(payload.get("mode") or "replace").strip()
+                mode = str(payload.get("mode") or "merge").strip()
                 data_obj = payload.get("data") if ("data" in payload and isinstance(payload["data"], dict)) else payload
                 res = import_database_from_dict(
                     data_obj,
@@ -1755,7 +1585,7 @@ def run_server(
     port: int = DEFAULT_PORT,
     db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
-    init_db(db_path=db_path, seed_defaults=True)
+    init_db(db_path=db_path)
     IdentityOSRequestHandler.db_path = db_path
     server = ThreadingHTTPServer((host, port), IdentityOSRequestHandler)
     print(f"Identity Building OS running at http://{host}:{port}")
@@ -1774,37 +1604,35 @@ def handle_cli_args(args: list[str]) -> bool:
     db_target = DEFAULT_DB_PATH
     if "--db" in args:
         db_idx = args.index("--db")
-        if db_idx + 1 < len(args):
-            db_target = Path(args[db_idx + 1]).resolve()
+        if db_idx + 1 >= len(args) or args[db_idx + 1].startswith("-"):
+            raise ValueError("--db requires a database file path argument.")
+        db_target = Path(args[db_idx + 1]).resolve()
 
     if "--export" in args or "-e" in args:
         idx = args.index("--export") if "--export" in args else args.index("-e")
-        target_path = (
-            Path(args[idx + 1])
-            if idx + 1 < len(args) and not args[idx + 1].startswith("-")
-            else (db_target.parent / "identity_os_export.json")
-        )
-        init_db(db_target, seed_defaults=True)
+        if idx + 1 >= len(args) or args[idx + 1].startswith("-"):
+            raise ValueError("--export requires a file path argument. Example: python app.py --export habits.json")
+        target_path = Path(args[idx + 1])
+        init_db(db_target)
         data = export_database_to_dict(db_target, GUIDANCE_DIR)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"Exported database successfully to: {target_path.resolve()}")
+        print(f"Exported identities and habits successfully to: {target_path.resolve()}")
         return True
 
     if "--import" in args or "-i" in args:
         idx = args.index("--import") if "--import" in args else args.index("-i")
         if idx + 1 >= len(args) or args[idx + 1].startswith("-"):
-            print("Error: --import requires a file path argument. Example: python app.py --import backup.json")
-            sys.exit(1)
+            raise ValueError("--import requires a file path argument. Example: python app.py --import habits.json")
         source_path = Path(args[idx + 1])
         if not source_path.is_file():
-            print(f"Error: file not found at: {source_path.resolve()}")
-            sys.exit(1)
-        mode = "merge" if ("--merge" in args or "-m" in args) else "replace"
+            raise FileNotFoundError(f"Import file not found at: {source_path.resolve()}")
+        mode = "replace" if ("--replace" in args or "-r" in args) else "merge"
+        init_db(db_target)
         raw_json = json.loads(source_path.read_text(encoding="utf-8"))
         data_obj = raw_json.get("data") if ("data" in raw_json and isinstance(raw_json["data"], dict)) else raw_json
         res = import_database_from_dict(data_obj, db_target, GUIDANCE_DIR, mode=mode)
-        print(f"Imported successfully ({mode} mode): {res}")
+        print(f"Imported identities and habits successfully ({mode} mode): {res}")
         return True
 
     return False

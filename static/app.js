@@ -1,3 +1,11 @@
+const STAGES = [
+  "Planning only",
+  "Experimenting",
+  "Building evidence",
+  "Becoming consistent",
+  "Maintaining identity",
+];
+
 const state = {
   view: "dashboard",
   scope: "week",
@@ -124,23 +132,33 @@ function renderAll() {
 function renderToolbarAndBanner() {
   const { selected_date, week_start, week_end, weekly_review } = state.data;
   document.getElementById("selectedDateInput").value = selected_date;
-  document.getElementById("weekRangeLabel").textContent = `Week: ${week_start} → ${week_end}`;
+  document.getElementById("weekRangeLabel").textContent = `Week: ${week_start} to ${week_end}`;
 
   document.querySelectorAll(".scope-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.scope === state.scope);
   });
 
   const pinned = weekly_review?.pinned_adjustment || {};
-  const bannerText =
-    pinned.one_adjustment ||
-    pinned.next_smallest_action ||
-    "Review weekly, not obsessively every day. Choose 1 system adjustment in your Weekly Review.";
-  document.getElementById("pinnedAdjustmentText").textContent = bannerText;
+  const bannerEl = document.getElementById("pinnedAdjustmentText");
+  const customText = (pinned.one_adjustment || pinned.next_smallest_action || "").trim();
+  if (customText) {
+    bannerEl.textContent = customText;
+  }
 }
 
 function renderQuickCapture() {
   const wrap = document.getElementById("captureIdentityPills");
+  const submitBtn = document.getElementById("submitActionBtn");
   wrap.innerHTML = "";
+
+  if (state.data.identities.length === 0) {
+    wrap.innerHTML = `<span class="card-subtitle">No identities configured yet. Create or import an identity first.</span>`;
+    if (submitBtn) submitBtn.disabled = true;
+    return;
+  }
+
+  if (submitBtn) submitBtn.disabled = false;
+
   for (const ident of state.data.identities) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -226,7 +244,7 @@ function renderDonutChart() {
 
       path.addEventListener("mouseenter", () => {
         tooltip.hidden = false;
-        tooltip.innerHTML = `<strong>${escapeHtml(slice.name)}</strong>: ${slice.weighted_votes} net votes (${slice.percentage}%) • ${slice.raw_touches} votes${slice.devote_count ? ` / ${slice.devote_count} devotes` : ""}`;
+        tooltip.innerHTML = `<strong>${escapeHtml(slice.name)}</strong>: ${slice.weighted_votes} net votes (${slice.percentage}%) - ${slice.raw_touches} votes${slice.devote_count ? ` / ${slice.devote_count} devotes` : ""}`;
       });
       path.addEventListener("mouseleave", () => {
         tooltip.hidden = true;
@@ -256,24 +274,30 @@ function renderDonutChart() {
   centerSub.textContent = state.scope === "day" ? "Net Votes (Day)" : "Net Votes (Week)";
   svg.appendChild(centerSub);
 
-  for (const slice of chart.slices) {
-    const color = isDarkMode() ? slice.color_dark : slice.color_light;
+  if (chart.slices.length === 0) {
     const tr = document.createElement("tr");
-    const actionSummary = slice.devote_count
-      ? `${slice.raw_touches}v / -${slice.devote_count}d`
-      : `${slice.raw_touches}`;
-    tr.innerHTML = `
-      <td>
-        <div class="legend-ident-cell">
-          <span class="legend-swatch" style="background:${color}"></span>
-          <span>${escapeHtml(slice.name)}</span>
-        </div>
-      </td>
-      <td class="num">${slice.weighted_votes}</td>
-      <td class="num">${slice.percentage}%</td>
-      <td class="num">${actionSummary}</td>
-    `;
+    tr.innerHTML = `<td colspan="4" class="card-subtitle">No identities configured yet.</td>`;
     tbody.appendChild(tr);
+  } else {
+    for (const slice of chart.slices) {
+      const color = isDarkMode() ? slice.color_dark : slice.color_light;
+      const tr = document.createElement("tr");
+      const actionSummary = slice.devote_count
+        ? `${slice.raw_touches}v / -${slice.devote_count}d`
+        : `${slice.raw_touches}`;
+      tr.innerHTML = `
+        <td>
+          <div class="legend-ident-cell">
+            <span class="legend-swatch" style="background:${color}"></span>
+            <span>${escapeHtml(slice.name)}</span>
+          </div>
+        </td>
+        <td class="num">${slice.weighted_votes}</td>
+        <td class="num">${slice.percentage}%</td>
+        <td class="num">${actionSummary}</td>
+      `;
+      tbody.appendChild(tr);
+    }
   }
 
   document.getElementById("kpiTotalVotes").textContent = chart.total_votes;
@@ -307,7 +331,7 @@ function renderCalendar() {
     `;
     tile.addEventListener("click", () => {
       state.selectedDate = day.date;
-      loadState();
+      loadState().catch((err) => showToast(err.message));
     });
     strip.appendChild(tile);
   }
@@ -322,71 +346,78 @@ function renderCalendar() {
     el.textContent = cell.date.slice(8);
     el.addEventListener("click", () => {
       state.selectedDate = cell.date;
-      loadState();
+      loadState().catch((err) => showToast(err.message));
     });
     heatmap.appendChild(el);
   }
 }
 
+function formatHabitRuleValue(val) {
+  const trimmed = String(val || "").trim();
+  if (!trimmed) {
+    return `<span class="popover-rule-empty">Not configured (click Edit to set)</span>`;
+  }
+  return escapeHtml(trimmed);
+}
+
 function renderHabitRulesPopoverHtml(h) {
   const isAnti = h.category === "anti_identity_guard";
+  const identities = state.data?.identities || [];
+  const identMap = Object.fromEntries(identities.map((i) => [i.id, i]));
+  const linkedBadges = (h.identity_ids || [])
+    .map((iid) => {
+      const ident = identMap[iid];
+      if (!ident) return "";
+      return `<span class="popover-ident-tag"><span class="dot-swatch" style="background:${identColor(ident)}"></span>${escapeHtml(ident.name)}</span>`;
+    })
+    .filter(Boolean)
+    .join("");
 
-  let triggerFormatted = "";
-  if (h.trigger_type === "time_location") {
-    const time = h.trigger_time ? `at ${h.trigger_time}` : "";
-    const loc = h.trigger_location ? `in ${h.trigger_location}` : "";
-    triggerFormatted = [time, loc].filter(Boolean).join(" ") || "Time and location specified";
-  } else if (h.trigger_type === "habit_stack") {
-    triggerFormatted = h.trigger_anchor ? `After: "${h.trigger_anchor}"` : "Anchored to routine";
-  } else if (h.trigger_type === "visual_cue") {
-    triggerFormatted = h.trigger_cue ? `Cue: "${h.trigger_cue}"` : "Visual environmental cue";
-  } else if (h.rule1_obvious) {
-    triggerFormatted = h.rule1_obvious;
-  } else {
-    triggerFormatted = isAnti ? "Keep cues out of sight (remove feeds and devices)" : "Make cues visible in environment";
-  }
-
-  const rule1 = h.rule1_obvious || triggerFormatted;
-  const rule2 = h.rule2_attractive || (isAnti ? "Notice real mental cost, drained focus, and regret" : "Pair with something enjoyable; reframe as opportunity");
-  const rule3 = h.two_minute_version || h.rule3_easy || (isAnti ? "Increase friction: logouts, blockers, physical distance" : "Start with < 120s action to master showing up");
-  const rule4 = h.rule4_satisfying || (isAnti ? "Log slips immediately as obstacles; make costs visible" : "Cast an identity vote immediately; never miss twice");
+  const rule1 = h.rule1_obvious;
+  const rule2 = h.rule2_attractive;
+  const rule3 = h.rule3_easy || h.two_minute_version;
+  const rule4 = h.rule4_satisfying;
 
   return `
     <div class="habit-rules-popover" role="tooltip">
       <div class="popover-header">
-        <span class="popover-badge ${isAnti ? "badge-anti" : "badge-identity"}">
-          ${isAnti ? "Anti-Identity: 4 Inversions" : "Atomic Habit: 4 Laws"}
-        </span>
-        <span class="popover-cadence">${escapeHtml(h.cadence || "daily")}</span>
+        <div class="popover-title-row">
+          <span class="popover-badge ${isAnti ? "badge-anti" : "badge-identity"}">
+            ${isAnti ? "Anti-Identity Guardrail" : "Identity Habit"}
+          </span>
+          <span class="popover-cadence">${escapeHtml(h.cadence || "daily")}</span>
+        </div>
+        <div class="popover-habit-name">${escapeHtml(h.title)}</div>
+        ${linkedBadges ? `<div class="popover-ident-list">${linkedBadges}</div>` : ""}
       </div>
       <div class="popover-rules-grid">
         <div class="popover-rule-item">
           <div class="popover-rule-title">
             <span class="popover-icon">${isAnti ? iconSvg("eyeOff") : iconSvg("eye")}</span>
-            <strong>${isAnti ? "1. Make It Invisible" : "1. Make It Obvious"}</strong>
+            <strong>${isAnti ? "Inversion 1: Make It Invisible" : "Law 1: Make It Obvious"}</strong>
           </div>
-          <div class="popover-rule-content">${escapeHtml(rule1)}</div>
+          <div class="popover-rule-content">${formatHabitRuleValue(rule1)}</div>
         </div>
         <div class="popover-rule-item">
           <div class="popover-rule-title">
             <span class="popover-icon">${isAnti ? iconSvg("shieldAlert") : iconSvg("sparkle")}</span>
-            <strong>${isAnti ? "2. Make It Unattractive" : "2. Make It Attractive"}</strong>
+            <strong>${isAnti ? "Inversion 2: Make It Unattractive" : "Law 2: Make It Attractive"}</strong>
           </div>
-          <div class="popover-rule-content">${escapeHtml(rule2)}</div>
+          <div class="popover-rule-content">${formatHabitRuleValue(rule2)}</div>
         </div>
         <div class="popover-rule-item">
           <div class="popover-rule-title">
             <span class="popover-icon">${isAnti ? iconSvg("barrier") : iconSvg("feather")}</span>
-            <strong>${isAnti ? "3. Make It Difficult" : "3. Make It Easy"}</strong>
+            <strong>${isAnti ? "Inversion 3: Make It Difficult" : "Law 3: Make It Easy (2-Min Rule)"}</strong>
           </div>
-          <div class="popover-rule-content">${escapeHtml(rule3)}</div>
+          <div class="popover-rule-content">${formatHabitRuleValue(rule3)}</div>
         </div>
         <div class="popover-rule-item">
           <div class="popover-rule-title">
             <span class="popover-icon">${isAnti ? iconSvg("slashCircle") : iconSvg("target")}</span>
-            <strong>${isAnti ? "4. Make It Unsatisfying" : "4. Make It Satisfying"}</strong>
+            <strong>${isAnti ? "Inversion 4: Make It Unsatisfying" : "Law 4: Make It Satisfying"}</strong>
           </div>
-          <div class="popover-rule-content">${escapeHtml(rule4)}</div>
+          <div class="popover-rule-content">${formatHabitRuleValue(rule4)}</div>
         </div>
       </div>
     </div>
@@ -396,8 +427,16 @@ function renderHabitRulesPopoverHtml(h) {
 function renderIdentityCards() {
   const grid = document.getElementById("identityCardsGrid");
   grid.innerHTML = "";
-  const { identities, habits, settings } = state.data;
-  const stages = (settings.stages || []).map((s) => s.name || s);
+  const { identities, habits } = state.data;
+
+  if (identities.length === 0) {
+    grid.innerHTML = `
+      <article class="card" style="grid-column: 1 / -1;">
+        <p class="card-subtitle">No identities configured yet. Click <strong>+ New Identity</strong> or <strong>Import Habits</strong> to add your identities and habits.</p>
+      </article>
+    `;
+    return;
+  }
 
   for (const ident of identities) {
     const color = identColor(ident);
@@ -409,7 +448,7 @@ function renderIdentityCards() {
     card.className = "identity-card";
     card.style.setProperty("--ident-color", color);
 
-    const stageOptions = stages
+    const stageOptions = STAGES
       .map(
         (st) =>
           `<option value="${escapeHtml(st)}" ${st === ident.current_stage ? "selected" : ""}>${escapeHtml(st)}</option>`
@@ -422,12 +461,12 @@ function renderIdentityCards() {
             const displayTitle = state.twoMinuteMode && h.two_minute_version ? h.two_minute_version : h.title;
             const doneCount = h.completed_on_selected_date || 0;
             return `
-              <div class="habit-item ${doneCount > 0 ? "completed-today" : ""}">
+              <div class="habit-item ${doneCount > 0 ? "completed-today" : ""}" tabindex="0">
                 <div class="habit-text-wrap">
                   <span class="habit-title-text">
                     <span class="habit-cadence-tag">${escapeHtml(h.cadence)}</span>
                     ${escapeHtml(displayTitle)}
-                    <span class="rules-info-pill" title="Hover to view Atomic Habits 4 Laws and triggers">${iconSvg("info", 11)} Rules</span>
+                    <span class="rules-info-pill" title="Hover to view this habit's 4 Laws metadata">${iconSvg("info", 11)} 4 Laws</span>
                   </span>
                   ${renderHabitRulesPopoverHtml(h)}
                 </div>
@@ -449,7 +488,7 @@ function renderIdentityCards() {
 
     const recentSnippet =
       ident.recent_actions && ident.recent_actions.length > 0
-        ? `Latest: “${escapeHtml(ident.recent_actions[0].title)}” (${ident.recent_actions[0].timestamp_display || ident.recent_actions[0].created_at})`
+        ? `Latest: "${escapeHtml(ident.recent_actions[0].title)}" (${ident.recent_actions[0].timestamp_display || ident.recent_actions[0].created_at})`
         : "No votes in current view yet";
 
     card.innerHTML = `
@@ -491,82 +530,107 @@ function renderIdentityCards() {
   // Bind 1-click habit vote buttons
   grid.querySelectorAll("[data-quick-habit]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const habitId = btn.dataset.quickHabit;
-      const habit = state.data.habits.find((h) => h.id === habitId);
-      if (!habit) return;
-      const useTwoMin = state.twoMinuteMode;
-      const title = useTwoMin && habit.two_minute_version ? habit.two_minute_version : habit.title;
-      const res = await api("/api/actions", {
-        method: "POST",
-        body: JSON.stringify({
-          habit_id: habit.id,
-          title,
-          action_date: state.selectedDate,
-          identity_ids: habit.identity_ids,
-          used_two_minute_rule: useTwoMin,
-          kind: "vote",
-        }),
-      });
-      showToast(`Vote cast (${res.timestamp}): ${title}`);
-      await loadState();
+      try {
+        const habitId = btn.dataset.quickHabit;
+        const habit = state.data.habits.find((h) => h.id === habitId);
+        if (!habit) return;
+        const useTwoMin = state.twoMinuteMode;
+        const title = useTwoMin && habit.two_minute_version ? habit.two_minute_version : habit.title;
+        const res = await api("/api/actions", {
+          method: "POST",
+          body: JSON.stringify({
+            habit_id: habit.id,
+            title,
+            action_date: state.selectedDate,
+            identity_ids: habit.identity_ids,
+            used_two_minute_rule: useTwoMin,
+            kind: "vote",
+          }),
+        });
+        showToast(`Vote cast (${res.timestamp}): ${title}`);
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
   // Bind 1-click habit devote buttons
   grid.querySelectorAll("[data-devote-habit]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const habitId = btn.dataset.devoteHabit;
-      const habit = state.data.habits.find((h) => h.id === habitId);
-      if (!habit) return;
-      const res = await api("/api/actions/devote", {
-        method: "POST",
-        body: JSON.stringify({
-          habit_id: habit.id,
-          action_date: state.selectedDate,
-          identity_ids: habit.identity_ids,
-        }),
-      });
-      if (res.effect === "removed_vote") {
-        showToast(`Devoted: Removed vote for "${habit.title}" from DB & logs`);
-      } else {
-        showToast(`Devoted (${res.timestamp}): Logged -1 vote for "${habit.title}"`);
+      try {
+        const habitId = btn.dataset.devoteHabit;
+        const habit = state.data.habits.find((h) => h.id === habitId);
+        if (!habit) return;
+        const res = await api("/api/actions/devote", {
+          method: "POST",
+          body: JSON.stringify({
+            habit_id: habit.id,
+            action_date: state.selectedDate,
+            identity_ids: habit.identity_ids,
+          }),
+        });
+        if (res.effect === "removed_vote") {
+          showToast(`Devoted: Removed vote for "${habit.title}" from DB & logs`);
+        } else {
+          showToast(`Devoted (${res.timestamp}): Logged -1 vote for "${habit.title}"`);
+        }
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
       }
-      await loadState();
     });
   });
 
   // Bind delete habit buttons
   grid.querySelectorAll("[data-del-habit]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const habit = state.data.habits.find((h) => h.id === btn.dataset.delHabit);
-      if (!habit) return;
-      await api(`/api/habits/${encodeURIComponent(habit.id)}`, { method: "DELETE" });
-      showToast(`Deleted habit "${habit.title}" from DB & logs`);
-      await loadState();
+      try {
+        const habit = state.data.habits.find((h) => h.id === btn.dataset.delHabit);
+        if (!habit) return;
+        await api(`/api/habits/${encodeURIComponent(habit.id)}`, { method: "DELETE" });
+        showToast(`Deleted habit "${habit.title}" from DB & logs`);
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
   // Bind delete identity buttons
   grid.querySelectorAll("[data-del-ident]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const ident = state.data.identities.find((i) => i.id === btn.dataset.delIdent);
-      if (!ident) return;
-      await api(`/api/identities/${encodeURIComponent(ident.id)}`, { method: "DELETE" });
-      showToast(`Deleted identity "${ident.name}" from DB & logs`);
-      await loadState();
+      try {
+        const ident = state.data.identities.find((i) => i.id === btn.dataset.delIdent);
+        if (!ident) return;
+        await api(`/api/identities/${encodeURIComponent(ident.id)}`, { method: "DELETE" });
+        showToast(`Deleted identity "${ident.name}" from DB & logs`);
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
   // Bind inline stage selector
   grid.querySelectorAll("[data-stage-ident]").forEach((sel) => {
     sel.addEventListener("change", async () => {
-      const identId = sel.dataset.stageIdent;
-      await api(`/api/identities/${encodeURIComponent(identId)}`, {
-        method: "PUT",
-        body: JSON.stringify({ current_stage: sel.value }),
-      });
-      showToast("Updated identity stage");
-      await loadState();
+      try {
+        const identId = sel.dataset.stageIdent;
+        await api(`/api/identities/${encodeURIComponent(identId)}`, {
+          method: "PUT",
+          body: JSON.stringify({ current_stage: sel.value }),
+        });
+        showToast("Updated identity stage");
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
@@ -589,97 +653,115 @@ function renderIdentityCards() {
 }
 
 function renderGuardrailsAndFeed() {
-  const { habits, actions, identities, settings } = state.data;
-  document.getElementById("antiPrincipleDisplay").textContent =
-    settings.anti_principle || "I am not trying to eliminate fun. I am choosing how fun fits into my life.";
+  const { habits, actions, identities } = state.data;
 
   const guardList = document.getElementById("guardrailsList");
   guardList.innerHTML = "";
   const guardrails = habits.filter((h) => h.category === "anti_identity_guard");
 
-  for (const g of guardrails) {
-    const done = g.completed_on_selected_date || 0;
-    const item = document.createElement("div");
-    item.className = `habit-item ${done > 0 ? "completed-today" : ""}`;
-    const text = state.twoMinuteMode && g.two_minute_version ? g.two_minute_version : g.title;
-    item.innerHTML = `
-      <div class="habit-text-wrap">
-        <span class="habit-title-text">
-          ${escapeHtml(text)}
-          <span class="rules-info-pill" title="Hover to view Anti-Identity 4 Inversions">${iconSvg("info", 11)} Inversions</span>
-        </span>
-        ${renderHabitRulesPopoverHtml(g)}
-      </div>
-      <div class="habit-actions">
-        <button type="button" class="btn-vote-sm" data-guard-vote="${escapeHtml(g.id)}">
-          ${iconSvg("check", 12)} <span>${done > 0 ? `Held (${done})` : "Held Boundary"}</span>
-        </button>
-        <button type="button" class="btn-devote-sm" title="Devote guardrail" data-guard-devote="${escapeHtml(g.id)}">
-          ${iconSvg("minus", 11)} <span>Devote</span>
-        </button>
-        <button type="button" class="icon-btn-sm" title="Log obstacle for this guardrail" data-guard-slip="${escapeHtml(g.id)}">${iconSvg("alert", 12)}</button>
-        <button type="button" class="icon-btn-sm" title="Edit guardrail" data-edit-guard="${escapeHtml(g.id)}">${iconSvg("edit", 12)}</button>
-        <button type="button" class="icon-btn-sm" title="Delete guardrail" data-del-guard="${escapeHtml(g.id)}">${iconSvg("close", 12)}</button>
-      </div>
-    `;
-    guardList.appendChild(item);
+  if (guardrails.length === 0) {
+    guardList.innerHTML = `<p class="card-subtitle">No anti-identity guardrails configured yet. Click <strong>+ Guardrail</strong> to add one.</p>`;
+  } else {
+    for (const g of guardrails) {
+      const done = g.completed_on_selected_date || 0;
+      const item = document.createElement("div");
+      item.className = `habit-item ${done > 0 ? "completed-today" : ""}`;
+      item.tabIndex = 0;
+      const text = state.twoMinuteMode && g.two_minute_version ? g.two_minute_version : g.title;
+      item.innerHTML = `
+        <div class="habit-text-wrap">
+          <span class="habit-title-text">
+            ${escapeHtml(text)}
+            <span class="rules-info-pill" title="Hover to view this guardrail's 4 Inversions metadata">${iconSvg("info", 11)} 4 Inversions</span>
+          </span>
+          ${renderHabitRulesPopoverHtml(g)}
+        </div>
+        <div class="habit-actions">
+          <button type="button" class="btn-vote-sm" data-guard-vote="${escapeHtml(g.id)}">
+            ${iconSvg("check", 12)} <span>${done > 0 ? `Held (${done})` : "Held Boundary"}</span>
+          </button>
+          <button type="button" class="btn-devote-sm" title="Devote guardrail" data-guard-devote="${escapeHtml(g.id)}">
+            ${iconSvg("minus", 11)} <span>Devote</span>
+          </button>
+          <button type="button" class="icon-btn-sm" title="Log obstacle for this guardrail" data-guard-slip="${escapeHtml(g.id)}">${iconSvg("alert", 12)}</button>
+          <button type="button" class="icon-btn-sm" title="Edit guardrail" data-edit-guard="${escapeHtml(g.id)}">${iconSvg("edit", 12)}</button>
+          <button type="button" class="icon-btn-sm" title="Delete guardrail" data-del-guard="${escapeHtml(g.id)}">${iconSvg("close", 12)}</button>
+        </div>
+      `;
+      guardList.appendChild(item);
+    }
   }
 
   guardList.querySelectorAll("[data-guard-vote]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const g = guardrails.find((x) => x.id === btn.dataset.guardVote);
-      if (!g) return;
-      const res = await api("/api/actions", {
-        method: "POST",
-        body: JSON.stringify({
-          habit_id: g.id,
-          title: g.title,
-          action_date: state.selectedDate,
-          identity_ids: g.identity_ids,
-          used_two_minute_rule: state.twoMinuteMode,
-          kind: "vote",
-        }),
-      });
-      showToast(`Boundary win recorded (${res.timestamp})`);
-      await loadState();
+      try {
+        const g = guardrails.find((x) => x.id === btn.dataset.guardVote);
+        if (!g) return;
+        const res = await api("/api/actions", {
+          method: "POST",
+          body: JSON.stringify({
+            habit_id: g.id,
+            title: g.title,
+            action_date: state.selectedDate,
+            identity_ids: g.identity_ids,
+            used_two_minute_rule: state.twoMinuteMode,
+            kind: "vote",
+          }),
+        });
+        showToast(`Boundary win recorded (${res.timestamp})`);
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
   guardList.querySelectorAll("[data-guard-devote]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const g = guardrails.find((x) => x.id === btn.dataset.guardDevote);
-      if (!g) return;
-      await api("/api/actions/devote", {
-        method: "POST",
-        body: JSON.stringify({
-          habit_id: g.id,
-          action_date: state.selectedDate,
-          identity_ids: g.identity_ids,
-        }),
-      });
-      showToast(`Devoted guardrail: ${g.title}`);
-      await loadState();
+      try {
+        const g = guardrails.find((x) => x.id === btn.dataset.guardDevote);
+        if (!g) return;
+        await api("/api/actions/devote", {
+          method: "POST",
+          body: JSON.stringify({
+            habit_id: g.id,
+            action_date: state.selectedDate,
+            identity_ids: g.identity_ids,
+          }),
+        });
+        showToast(`Devoted guardrail: ${g.title}`);
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
   guardList.querySelectorAll("[data-guard-slip]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const g = guardrails.find((x) => x.id === btn.dataset.guardSlip);
-      if (!g) return;
-      const cue = window.prompt("What environmental cue or friction triggered this slip? (Optional note)", "") ?? "";
-      await api("/api/actions", {
-        method: "POST",
-        body: JSON.stringify({
-          habit_id: g.id,
-          title: `Friction on: ${g.title}`,
-          evidence_note: cue,
-          action_date: state.selectedDate,
-          identity_ids: g.identity_ids,
-          kind: "obstacle",
-        }),
-      });
-      showToast("Logged as obstacle data for Weekly Review");
-      await loadState();
+      try {
+        const g = guardrails.find((x) => x.id === btn.dataset.guardSlip);
+        if (!g) return;
+        const cue = window.prompt("What environmental cue or friction triggered this slip? (Optional note)", "") ?? "";
+        await api("/api/actions", {
+          method: "POST",
+          body: JSON.stringify({
+            habit_id: g.id,
+            title: `Friction on: ${g.title}`,
+            evidence_note: cue,
+            action_date: state.selectedDate,
+            identity_ids: g.identity_ids,
+            kind: "obstacle",
+          }),
+        });
+        showToast("Logged as obstacle data for Weekly Review");
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
@@ -692,11 +774,16 @@ function renderGuardrailsAndFeed() {
 
   guardList.querySelectorAll("[data-del-guard]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const g = guardrails.find((x) => x.id === btn.dataset.delGuard);
-      if (!g) return;
-      await api(`/api/habits/${encodeURIComponent(g.id)}`, { method: "DELETE" });
-      showToast(`Deleted guardrail "${g.title}"`);
-      await loadState();
+      try {
+        const g = guardrails.find((x) => x.id === btn.dataset.delGuard);
+        if (!g) return;
+        await api(`/api/habits/${encodeURIComponent(g.id)}`, { method: "DELETE" });
+        showToast(`Deleted guardrail "${g.title}"`);
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
@@ -775,26 +862,36 @@ function renderGuardrailsAndFeed() {
 
   feedEl.querySelectorAll("[data-devote-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      await api("/api/actions/devote", {
-        method: "POST",
-        body: JSON.stringify({ action_id: Number(btn.dataset.devoteAction) }),
-      });
-      showToast("Vote devoted & removed from database and logs");
-      await loadState();
+      try {
+        await api("/api/actions/devote", {
+          method: "POST",
+          body: JSON.stringify({ action_id: Number(btn.dataset.devoteAction) }),
+        });
+        showToast("Vote devoted & removed from database and logs");
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
   feedEl.querySelectorAll("[data-del-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      await api(`/api/actions/${btn.dataset.delAction}`, { method: "DELETE" });
-      showToast("Deleted entry from database and logs");
-      await loadState();
+      try {
+        await api(`/api/actions/${btn.dataset.delAction}`, { method: "DELETE" });
+        showToast("Deleted entry from database and logs");
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 }
 
 function renderWeeklyReview() {
-  const { weekly_review, week_start, week_end, settings } = state.data;
+  const { weekly_review, week_start, week_end } = state.data;
   const { auto_summary, saved } = weekly_review;
 
   document.getElementById("reviewWeekSub").textContent = `Week of ${week_start} to ${week_end}`;
@@ -845,50 +942,21 @@ function renderWeeklyReview() {
       : `<div class="card-subtitle">Add an evidence note when logging actions to highlight breakthroughs here.</div>`;
   }
 
-  const qContainer = document.getElementById("reviewQuestionsContainer");
-  qContainer.innerHTML = "";
-  const questions = settings.reflection_questions || [];
   const savedAnswers = saved.answers || {};
-
-  questions.forEach((qText, idx) => {
-    const qKey = `q_${idx}`;
-    const val = savedAnswers[qText] ?? savedAnswers[qKey] ?? "";
-    const div = document.createElement("div");
-    div.className = "form-group";
-    div.innerHTML = `
-      <label><strong>${escapeHtml(qText)}</strong></label>
-      <textarea class="input-main" rows="2" data-review-question="${escapeHtml(qText)}">${escapeHtml(val)}</textarea>
-    `;
-    qContainer.appendChild(div);
+  document.querySelectorAll("[data-review-question]").forEach((ta, idx) => {
+    const qText = ta.dataset.reviewQuestion;
+    ta.value = savedAnswers[qText] ?? savedAnswers[`q_${idx}`] ?? "";
   });
 
   document.getElementById("revOneAdjustment").value = saved.one_adjustment || "";
   document.getElementById("revStrongestEvidence").value = saved.strongest_evidence || "";
   document.getElementById("revNextSmallestAction").value = saved.next_smallest_action || "";
+  document.getElementById("revOverallStage").value = saved.overall_stage || "Building evidence";
 
-  const stageSel = document.getElementById("revOverallStage");
-  const stages = (settings.stages || []).map((s) => s.name || s);
-  stageSel.innerHTML = stages
-    .map(
-      (st) =>
-        `<option value="${escapeHtml(st)}" ${st === saved.overall_stage ? "selected" : ""}>${escapeHtml(st)}</option>`
-    )
-    .join("");
-
-  const checksGrid = document.getElementById("revSystemChecksGrid");
-  checksGrid.innerHTML = "";
-  const sysChecks = settings.system_checks || [];
   const savedChecks = saved.system_checks || {};
-  for (const chk of sysChecks) {
-    const checked = Boolean(savedChecks[chk.id]);
-    const lbl = document.createElement("label");
-    lbl.className = "check-label";
-    lbl.innerHTML = `
-      <input type="checkbox" data-sys-check="${escapeHtml(chk.id)}" ${checked ? "checked" : ""} />
-      <span><strong>[${escapeHtml(chk.group)}]</strong> ${escapeHtml(chk.label)}</span>
-    `;
-    checksGrid.appendChild(lbl);
-  }
+  document.querySelectorAll("[data-sys-check]").forEach((chk) => {
+    chk.checked = Boolean(savedChecks[chk.dataset.sysCheck]);
+  });
 }
 
 function simpleMarkdownToHtml(md) {
@@ -1038,25 +1106,29 @@ function renderGuidanceView() {
 function renderManageView() {
   const listEl = document.getElementById("manageIdentitiesList");
   listEl.innerHTML = "";
-  const { identities, habits, settings } = state.data;
+  const { identities, habits } = state.data;
 
-  for (const ident of identities) {
-    const row = document.createElement("div");
-    row.className = "manage-row";
-    row.innerHTML = `
-      <div class="legend-ident-cell">
-        <span class="legend-swatch" style="background:${identColor(ident)}"></span>
-        <div>
-          <strong>${escapeHtml(ident.name)}</strong>
-          <div class="card-subtitle">${escapeHtml(ident.tagline)} · Stage: ${escapeHtml(ident.current_stage)}</div>
+  if (identities.length === 0) {
+    listEl.innerHTML = `<p class="card-subtitle">No identities configured yet.</p>`;
+  } else {
+    for (const ident of identities) {
+      const row = document.createElement("div");
+      row.className = "manage-row";
+      row.innerHTML = `
+        <div class="legend-ident-cell">
+          <span class="legend-swatch" style="background:${identColor(ident)}"></span>
+          <div>
+            <strong>${escapeHtml(ident.name)}</strong>
+            <div class="card-subtitle">${escapeHtml(ident.tagline ? `${ident.tagline} · ` : "")}Stage: ${escapeHtml(ident.current_stage)}</div>
+          </div>
         </div>
-      </div>
-      <div class="habit-actions">
-        <button type="button" class="btn-secondary" data-mgr-edit="${escapeHtml(ident.id)}">Edit</button>
-        <button type="button" class="btn-devote-sm" title="Delete identity" data-mgr-del="${escapeHtml(ident.id)}">Delete</button>
-      </div>
-    `;
-    listEl.appendChild(row);
+        <div class="habit-actions">
+          <button type="button" class="btn-secondary" data-mgr-edit="${escapeHtml(ident.id)}">Edit</button>
+          <button type="button" class="btn-devote-sm" title="Delete identity" data-mgr-del="${escapeHtml(ident.id)}">Delete</button>
+        </div>
+      `;
+      listEl.appendChild(row);
+    }
   }
 
   listEl.querySelectorAll("[data-mgr-edit]").forEach((btn) => {
@@ -1068,37 +1140,46 @@ function renderManageView() {
 
   listEl.querySelectorAll("[data-mgr-del]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const ident = identities.find((i) => i.id === btn.dataset.mgrDel);
-      if (!ident) return;
-      await api(`/api/identities/${encodeURIComponent(ident.id)}`, { method: "DELETE" });
-      showToast(`Deleted identity "${ident.name}"`);
-      await loadState();
+      try {
+        const ident = identities.find((i) => i.id === btn.dataset.mgrDel);
+        if (!ident) return;
+        await api(`/api/identities/${encodeURIComponent(ident.id)}`, { method: "DELETE" });
+        showToast(`Deleted identity "${ident.name}"`);
+        await loadState();
+      } catch (err) {
+        console.error(err);
+        showToast(err.message);
+      }
     });
   });
 
   const habitsListEl = document.getElementById("manageHabitsList");
   if (habitsListEl) {
     habitsListEl.innerHTML = "";
-    const identMap = Object.fromEntries(identities.map((i) => [i.id, i.name]));
-    for (const h of habits) {
-      const row = document.createElement("div");
-      row.className = "manage-row";
-      const linkedNames = (h.identity_ids || []).map((id) => identMap[id] || id).join(", ");
-      row.innerHTML = `
-        <div>
-          <strong>${escapeHtml(h.title)}</strong>
-          <div class="card-subtitle">
-            ${escapeHtml(h.category === "anti_identity_guard" ? "Anti-Identity Guardrail" : "Habit")}
-            · ${escapeHtml(h.cadence)}
-            · Linked: ${escapeHtml(linkedNames)}
+    if (habits.length === 0) {
+      habitsListEl.innerHTML = `<p class="card-subtitle">No habits or guardrails configured yet.</p>`;
+    } else {
+      const identMap = Object.fromEntries(identities.map((i) => [i.id, i.name]));
+      for (const h of habits) {
+        const row = document.createElement("div");
+        row.className = "manage-row";
+        const linkedNames = (h.identity_ids || []).map((id) => identMap[id] || id).join(", ");
+        row.innerHTML = `
+          <div>
+            <strong>${escapeHtml(h.title)}</strong>
+            <div class="card-subtitle">
+              ${escapeHtml(h.category === "anti_identity_guard" ? "Anti-Identity Guardrail" : "Habit")}
+              · ${escapeHtml(h.cadence)}
+              · Linked: ${escapeHtml(linkedNames)}
+            </div>
           </div>
-        </div>
-        <div class="habit-actions">
-          <button type="button" class="btn-secondary" data-mgr-habit-edit="${escapeHtml(h.id)}">Edit</button>
-          <button type="button" class="btn-devote-sm" title="Delete habit" data-mgr-habit-del="${escapeHtml(h.id)}">Delete</button>
-        </div>
-      `;
-      habitsListEl.appendChild(row);
+          <div class="habit-actions">
+            <button type="button" class="btn-secondary" data-mgr-habit-edit="${escapeHtml(h.id)}">Edit</button>
+            <button type="button" class="btn-devote-sm" title="Delete habit" data-mgr-habit-del="${escapeHtml(h.id)}">Delete</button>
+          </div>
+        `;
+        habitsListEl.appendChild(row);
+      }
     }
 
     habitsListEl.querySelectorAll("[data-mgr-habit-edit]").forEach((btn) => {
@@ -1110,17 +1191,19 @@ function renderManageView() {
 
     habitsListEl.querySelectorAll("[data-mgr-habit-del]").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        const h = habits.find((x) => x.id === btn.dataset.mgrHabitDel);
-        if (!h) return;
-        await api(`/api/habits/${encodeURIComponent(h.id)}`, { method: "DELETE" });
-        showToast(`Deleted "${h.title}"`);
-        await loadState();
+        try {
+          const h = habits.find((x) => x.id === btn.dataset.mgrHabitDel);
+          if (!h) return;
+          await api(`/api/habits/${encodeURIComponent(h.id)}`, { method: "DELETE" });
+          showToast(`Deleted "${h.title}"`);
+          await loadState();
+        } catch (err) {
+          console.error(err);
+          showToast(err.message);
+        }
       });
     });
   }
-
-  document.getElementById("settingAntiPrinciple").value = settings.anti_principle || "";
-  document.getElementById("settingQuestionsTextarea").value = (settings.reflection_questions || []).join("\n");
 }
 
 function openIdentityModal(ident = null) {
@@ -1130,11 +1213,7 @@ function openIdentityModal(ident = null) {
   document.getElementById("identModalName").value = ident ? ident.name : "";
   document.getElementById("identModalTagline").value = ident ? ident.tagline : "";
   document.getElementById("identModalDomain").value = ident ? ident.domain || "general" : "work";
-
-  const stages = (state.data.settings.stages || []).map((s) => s.name || s);
-  const stageSel = document.getElementById("identModalStage");
-  stageSel.innerHTML = stages.map((st) => `<option value="${escapeHtml(st)}">${escapeHtml(st)}</option>`).join("");
-  stageSel.value = ident ? ident.current_stage : "Building evidence";
+  document.getElementById("identModalStage").value = ident ? ident.current_stage : "Building evidence";
 
   const slots = state.data.palette_slots || [{ light: "#2a78d6", dark: "#3987e5" }];
   const nextSlot = slots[state.data.identities.length % slots.length];
@@ -1159,21 +1238,6 @@ function updateHabitModalCategoryUI() {
     titleLabelEl.textContent = isAnti ? "Boundary / Guardrail Description" : "Habit Description";
   }
 
-  const trigIcon = document.getElementById("habitTriggerIcon");
-  if (trigIcon) trigIcon.innerHTML = isAnti ? iconSvg("eyeOff", 16) : iconSvg("eye", 16);
-  const trigTitle = document.getElementById("habitTriggerSectionTitle");
-  if (trigTitle) {
-    trigTitle.textContent = isAnti
-      ? "Rule 1: Make It Invisible (Cue Elimination)"
-      : "Rule 1: Make It Obvious (Cue & Implementation)";
-  }
-  const trigSub = document.getElementById("habitTriggerSectionSubtitle");
-  if (trigSub) {
-    trigSub.textContent = isAnti
-      ? "Remove environmental cues, hide feeds, and keep friction high"
-      : "Specify when and where or anchor to an existing routine";
-  }
-
   const lawsIcon = document.getElementById("habitLawsIcon");
   if (lawsIcon) lawsIcon.innerHTML = isAnti ? iconSvg("shieldAlert", 16) : iconSvg("bolt", 16);
   const lawsTitle = document.getElementById("habitLawsHeaderTitle");
@@ -1185,125 +1249,76 @@ function updateHabitModalCategoryUI() {
   const lawsSub = document.getElementById("habitLawsHeaderSubtitle");
   if (lawsSub) {
     lawsSub.textContent = isAnti
-      ? "Invert the laws backwards: Invisible, Unattractive, Difficult, Unsatisfying"
-      : "Designed to make good habits effortless and durable";
+      ? "Write a simple rule for each of the 4 Inversions: Invisible, Unattractive, Difficult, Unsatisfying"
+      : "Write a simple, actionable rule for each of the 4 Laws to guide this habit";
   }
 
   const r1Label = document.getElementById("habitRule1Label");
   if (r1Label) {
     r1Label.textContent = isAnti
-      ? "Inversion 1: Make It Invisible (Out-of-Sight Strategy)"
-      : "Law 1: Make It Obvious (Cue & Visibility Strategy)";
+      ? "Inversion 1: Make It Invisible (Remove Cues)"
+      : "Law 1: Make It Obvious (When, Where & Visual Cue)";
   }
   const r1Input = document.getElementById("habitModalRule1");
   if (r1Input) {
     r1Input.placeholder = isAnti
-      ? "e.g., Charge phone outside bedroom; remove bookmark shortcuts and feed icons"
-      : "e.g., Keep book on pillow; place gym clothes next to bed";
+      ? "e.g., Charge phone outside bedroom and keep feed tabs closed"
+      : "e.g., At 9:00 AM at my clean desk with book placed on pillow";
   }
 
   const r2Label = document.getElementById("habitRule2Label");
   if (r2Label) {
     r2Label.textContent = isAnti
-      ? "Inversion 2: Make It Unattractive (Real Consequences & Cost)"
+      ? "Inversion 2: Make It Unattractive (Reframe Cost)"
       : "Law 2: Make It Attractive (Temptation Bundling / Mindset)";
   }
   const r2Input = document.getElementById("habitModalRule2");
   if (r2Input) {
     r2Input.placeholder = isAnti
       ? "e.g., Notice mental fog, lost agency, and tired mornings when giving in"
-      : "e.g., After finishing 30m of deep work, enjoy favorite tea or music";
+      : "e.g., Brew a favorite cup of tea or coffee right before starting";
   }
 
   const r3Label = document.getElementById("habitRule3Label");
   if (r3Label) {
     r3Label.textContent = isAnti
-      ? "Inversion 3: Make It Difficult (Add Barriers & Friction)"
+      ? "Inversion 3: Make It Difficult (Friction / 2-Min Reset)"
       : "Law 3: Make It Easy (Two-Minute Rule Starter Version)";
   }
   const r3Input = document.getElementById("habitModalTwoMinInput");
   if (r3Input) {
     r3Input.placeholder = isAnti
-      ? "e.g., 2-minute reset: log out of account, enable 60-second delay blocker"
+      ? "e.g., Place phone on a shelf in another room before sitting down"
       : "e.g., Open the workspace and write 2 sentences (<120 seconds)";
   }
 
   const r4Label = document.getElementById("habitRule4Label");
   if (r4Label) {
     r4Label.textContent = isAnti
-      ? "Inversion 4: Make It Unsatisfying (Immediate Penalty & Tracking)"
+      ? "Inversion 4: Make It Unsatisfying (Immediate Accountability)"
       : "Law 4: Make It Satisfying (Immediate Reward & Evidence)";
   }
   const r4Input = document.getElementById("habitModalRule4");
   if (r4Input) {
     r4Input.placeholder = isAnti
-      ? "e.g., Log slips immediately as an obstacle; share slip with accountability partner"
-      : "e.g., Cast an identity vote immediately; celebrate the small win";
-  }
-
-  updateTriggerFormulaPreview();
-}
-
-function updateHabitModalTriggerFields() {
-  const triggerType = document.getElementById("habitModalTriggerType")?.value || "none";
-  const timeLocEl = document.getElementById("triggerFieldsTimeLoc");
-  const stackEl = document.getElementById("triggerFieldsHabitStack");
-  const cueEl = document.getElementById("triggerFieldsVisualCue");
-
-  if (timeLocEl) timeLocEl.hidden = triggerType !== "time_location";
-  if (stackEl) stackEl.hidden = triggerType !== "habit_stack";
-  if (cueEl) cueEl.hidden = triggerType !== "visual_cue";
-
-  updateTriggerFormulaPreview();
-}
-
-function updateTriggerFormulaPreview() {
-  const triggerType = document.getElementById("habitModalTriggerType")?.value || "none";
-  const previewWrap = document.getElementById("triggerPreviewWrap");
-  const previewText = document.getElementById("triggerPreviewText");
-  const title = document.getElementById("habitModalTitleInput")?.value.trim() || "[HABIT]";
-  const isAnti = document.getElementById("habitModalCategory")?.value === "anti_identity_guard";
-
-  if (!previewWrap || !previewText) return;
-
-  if (triggerType === "time_location") {
-    const time = document.getElementById("habitModalTriggerTime")?.value.trim() || "[TIME]";
-    const loc = document.getElementById("habitModalTriggerLocation")?.value.trim() || "[LOCATION]";
-    previewText.textContent = isAnti
-      ? `“At ${time} in ${loc}, I will protect my boundary against ${title}.”`
-      : `“I will perform ${title} at ${time} in ${loc}.”`;
-    previewWrap.hidden = false;
-  } else if (triggerType === "habit_stack") {
-    const anchor = document.getElementById("habitModalTriggerAnchor")?.value.trim() || "[CURRENT ROUTINE]";
-    previewText.textContent = isAnti
-      ? `“After I ${anchor}, I will guard against ${title}.”`
-      : `“After I ${anchor}, I will perform ${title}.”`;
-    previewWrap.hidden = false;
-  } else if (triggerType === "visual_cue") {
-    const cue = document.getElementById("habitModalTriggerCue")?.value.trim() || "[ENVIRONMENT CUE]";
-    previewText.textContent = isAnti
-      ? `“Make Invisible: remove cue (${cue}) to prevent ${title}.”`
-      : `“When I see cue (${cue}), I will perform ${title}.”`;
-    previewWrap.hidden = false;
-  } else {
-    previewWrap.hidden = true;
+      ? "e.g., Log slips immediately as an obstacle; record held boundary win"
+      : "e.g., Cast an identity vote immediately and celebrate the small win";
   }
 }
 
 function openHabitModal(habit = null, defaultIdentityIds = [], defaultCategory = "identity_habit") {
+  if (!state.data?.identities || state.data.identities.length === 0) {
+    showToast("Create at least one identity before adding a habit.");
+    return;
+  }
+
   const modal = document.getElementById("habitModal");
   document.getElementById("habitModalTitle").textContent = habit ? "Edit Recurring Habit / Guardrail" : "New Recurring Habit";
   document.getElementById("habitModalId").value = habit ? habit.id : "";
   document.getElementById("habitModalTitleInput").value = habit ? habit.title : "";
-  document.getElementById("habitModalTwoMinInput").value = habit ? (habit.two_minute_version || habit.rule3_easy || "") : "";
+  document.getElementById("habitModalTwoMinInput").value = habit ? (habit.rule3_easy || habit.two_minute_version || "") : "";
   document.getElementById("habitModalCadence").value = habit ? habit.cadence : "daily";
   document.getElementById("habitModalCategory").value = habit ? habit.category : defaultCategory;
-
-  document.getElementById("habitModalTriggerType").value = habit?.trigger_type || "none";
-  document.getElementById("habitModalTriggerTime").value = habit?.trigger_time || "";
-  document.getElementById("habitModalTriggerLocation").value = habit?.trigger_location || "";
-  document.getElementById("habitModalTriggerAnchor").value = habit?.trigger_anchor || "";
-  document.getElementById("habitModalTriggerCue").value = habit?.trigger_cue || "";
 
   document.getElementById("habitModalRule1").value = habit?.rule1_obvious || "";
   document.getElementById("habitModalRule2").value = habit?.rule2_attractive || "";
@@ -1314,7 +1329,6 @@ function openHabitModal(habit = null, defaultIdentityIds = [], defaultCategory =
   );
   renderHabitModalIdentityPills();
   updateHabitModalCategoryUI();
-  updateHabitModalTriggerFields();
 
   modal.hidden = false;
 }
@@ -1349,18 +1363,21 @@ function switchView(viewName) {
     p.hidden = p.id !== `view-${viewName}`;
   });
   if (viewName === "guidance" && state.guidanceDocs.length === 0) {
-    loadGuidance();
+    loadGuidance().catch((err) => showToast(err.message));
   }
 }
 
-let activeImportMode = "replace";
+let activeImportMode = "merge";
 
 async function exportJsonData() {
   try {
     if (window.electronAPI && window.electronAPI.exportJson) {
       const res = await window.electronAPI.exportJson();
       if (res && res.saved) {
-        showToast(`Exported to ${res.filePath}`);
+        showToast(`Exported habits & identities to ${res.filePath}`);
+        return;
+      }
+      if (res && res.canceled) {
         return;
       }
     }
@@ -1372,27 +1389,27 @@ async function exportJsonData() {
     const a = document.createElement("a");
     const dateStr = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `identity_os_backup_${dateStr}.json`;
+    a.download = `identities_and_habits_${dateStr}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast("Exported database to JSON file");
+    showToast("Exported habits & identities to JSON file");
   } catch (err) {
     console.error("JSON Export Error:", err);
     showToast(`Export failed: ${err.message}`);
   }
 }
 
-function triggerImportJson(mode = "replace") {
+function triggerImportJson(mode = "merge") {
   activeImportMode = mode;
   if (window.electronAPI && window.electronAPI.importJson) {
     window.electronAPI
       .importJson(mode)
       .then((res) => {
         if (res && res.imported) {
-          showToast(`Imported successfully (${res.mode} mode)`);
-          loadState();
+          showToast(`Imported habits & identities (${res.mode} mode)`);
+          return loadState();
         }
       })
       .catch((err) => {
@@ -1408,7 +1425,7 @@ function triggerImportJson(mode = "replace") {
   }
 }
 
-async function handleImportJsonFile(file, mode = "replace") {
+async function handleImportJsonFile(file, mode = "merge") {
   if (!file) return;
   try {
     const text = await file.text();
@@ -1418,7 +1435,7 @@ async function handleImportJsonFile(file, mode = "replace") {
       body: JSON.stringify({ mode, data: parsed.data || parsed }),
     });
     showToast(
-      `Import successful (${mode} mode): ${res.habits_count || 0} habits, ${res.identities_count || 0} identities`
+      `Imported (${mode} mode): ${res.habits_count || 0} habits, ${res.identities_count || 0} identities`
     );
     await loadState();
   } catch (err) {
@@ -1452,26 +1469,26 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".scope-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.scope = btn.dataset.scope;
-      loadState();
+      loadState().catch((err) => showToast(err.message));
     });
   });
 
   document.getElementById("selectedDateInput").addEventListener("change", (e) => {
     state.selectedDate = e.target.value;
-    loadState();
+    loadState().catch((err) => showToast(err.message));
   });
 
   const shiftDate = (days) => {
     const d = new Date(`${state.selectedDate}T12:00:00`);
     d.setDate(d.getDate() + days);
     state.selectedDate = d.toISOString().slice(0, 10);
-    loadState();
+    loadState().catch((err) => showToast(err.message));
   };
   document.getElementById("prevDayBtn").addEventListener("click", () => shiftDate(-1));
   document.getElementById("nextDayBtn").addEventListener("click", () => shiftDate(1));
   document.getElementById("todayBtn").addEventListener("click", () => {
     state.selectedDate = state.data.today;
-    loadState();
+    loadState().catch((err) => showToast(err.message));
   });
 
   document.querySelectorAll(".kind-btn").forEach((btn) => {
@@ -1491,32 +1508,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("quickCaptureForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const titleEl = document.getElementById("actionTitleInput");
-    const noteEl = document.getElementById("actionEvidenceInput");
-    const twoMinEl = document.getElementById("actionTwoMinCheck");
+    try {
+      const titleEl = document.getElementById("actionTitleInput");
+      const noteEl = document.getElementById("actionEvidenceInput");
+      const twoMinEl = document.getElementById("actionTwoMinCheck");
 
-    const res = await api("/api/actions", {
-      method: "POST",
-      body: JSON.stringify({
-        title: titleEl.value,
-        evidence_note: noteEl.value,
-        action_date: state.selectedDate,
-        kind: state.captureKind,
-        used_two_minute_rule: twoMinEl.checked,
-        identity_ids: Array.from(state.selectedCaptureIdentities),
-      }),
-    });
+      const res = await api("/api/actions", {
+        method: "POST",
+        body: JSON.stringify({
+          title: titleEl.value,
+          evidence_note: noteEl.value,
+          action_date: state.selectedDate,
+          kind: state.captureKind,
+          used_two_minute_rule: twoMinEl.checked,
+          identity_ids: Array.from(state.selectedCaptureIdentities),
+        }),
+      });
 
-    titleEl.value = "";
-    noteEl.value = "";
-    showToast(
-      state.captureKind === "obstacle"
-        ? `Obstacle logged (${res.timestamp})`
-        : state.captureKind === "devote"
-        ? `Devote logged (${res.timestamp})`
-        : `Identity vote cast (${res.timestamp})`
-    );
-    await loadState();
+      titleEl.value = "";
+      noteEl.value = "";
+      showToast(
+        state.captureKind === "obstacle"
+          ? `Obstacle logged (${res.timestamp})`
+          : state.captureKind === "devote"
+          ? `Devote logged (${res.timestamp})`
+          : `Identity vote cast (${res.timestamp})`
+      );
+      await loadState();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
   });
 
   document.getElementById("feedIdentityFilter").addEventListener("change", (e) => {
@@ -1543,51 +1565,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("identityModalForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const id = document.getElementById("identModalId").value;
-    const payload = {
-      name: document.getElementById("identModalName").value,
-      tagline: document.getElementById("identModalTagline").value,
-      domain: document.getElementById("identModalDomain").value,
-      current_stage: document.getElementById("identModalStage").value,
-      color_light: document.getElementById("identModalColorLight").value,
-      color_dark: document.getElementById("identModalColorDark").value,
-    };
-    if (id) {
-      await api(`/api/identities/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
-      showToast("Identity updated");
-    } else {
-      await api("/api/identities", { method: "POST", body: JSON.stringify(payload) });
-      showToast("New identity created");
+    try {
+      const id = document.getElementById("identModalId").value;
+      const payload = {
+        name: document.getElementById("identModalName").value,
+        tagline: document.getElementById("identModalTagline").value,
+        domain: document.getElementById("identModalDomain").value,
+        current_stage: document.getElementById("identModalStage").value,
+        color_light: document.getElementById("identModalColorLight").value,
+        color_dark: document.getElementById("identModalColorDark").value,
+      };
+      if (id) {
+        await api(`/api/identities/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
+        showToast("Identity updated");
+      } else {
+        await api("/api/identities", { method: "POST", body: JSON.stringify(payload) });
+        showToast("New identity created");
+      }
+      document.getElementById("identityModal").hidden = true;
+      await loadState();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
     }
-    document.getElementById("identityModal").hidden = true;
-    await loadState();
   });
 
-  // Habit modal dynamic category and trigger change events
   const catEl = document.getElementById("habitModalCategory");
   if (catEl) catEl.addEventListener("change", updateHabitModalCategoryUI);
 
-  const trigTypeEl = document.getElementById("habitModalTriggerType");
-  if (trigTypeEl) trigTypeEl.addEventListener("change", updateHabitModalTriggerFields);
-
-  ["habitModalTriggerTime", "habitModalTriggerLocation", "habitModalTriggerAnchor", "habitModalTriggerCue", "habitModalTitleInput"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener("input", updateTriggerFormulaPreview);
-  });
-
-  // Export / Import buttons
   ["topExportJsonBtn", "manageExportJsonBtn"].forEach((id) => {
     const btn = document.getElementById(id);
     if (btn) btn.addEventListener("click", exportJsonData);
   });
 
-  ["topImportJsonBtn", "manageImportJsonBtn"].forEach((id) => {
+  ["topImportJsonBtn", "manageMergeJsonBtn"].forEach((id) => {
     const btn = document.getElementById(id);
-    if (btn) btn.addEventListener("click", () => triggerImportJson("replace"));
+    if (btn) btn.addEventListener("click", () => triggerImportJson("merge"));
   });
 
-  const mergeBtn = document.getElementById("manageMergeJsonBtn");
-  if (mergeBtn) mergeBtn.addEventListener("click", () => triggerImportJson("merge"));
+  const replaceBtn = document.getElementById("manageImportJsonBtn");
+  if (replaceBtn) replaceBtn.addEventListener("click", () => triggerImportJson("replace"));
 
   const fileInput = document.getElementById("importJsonFileInput");
   if (fileInput) {
@@ -1600,32 +1617,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("habitModalForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const id = document.getElementById("habitModalId").value;
-    const payload = {
-      title: document.getElementById("habitModalTitleInput").value,
-      two_minute_version: document.getElementById("habitModalTwoMinInput").value,
-      cadence: document.getElementById("habitModalCadence").value,
-      category: document.getElementById("habitModalCategory").value,
-      trigger_type: document.getElementById("habitModalTriggerType").value,
-      trigger_time: document.getElementById("habitModalTriggerTime").value,
-      trigger_location: document.getElementById("habitModalTriggerLocation").value,
-      trigger_anchor: document.getElementById("habitModalTriggerAnchor").value,
-      trigger_cue: document.getElementById("habitModalTriggerCue").value,
-      rule1_obvious: document.getElementById("habitModalRule1").value,
-      rule2_attractive: document.getElementById("habitModalRule2").value,
-      rule3_easy: document.getElementById("habitModalTwoMinInput").value,
-      rule4_satisfying: document.getElementById("habitModalRule4").value,
-      identity_ids: Array.from(state.modalHabitIdentities),
-    };
-    if (id) {
-      await api(`/api/habits/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
-      showToast("Habit updated");
-    } else {
-      await api("/api/habits", { method: "POST", body: JSON.stringify(payload) });
-      showToast("New habit added");
+    try {
+      const id = document.getElementById("habitModalId").value;
+      const rule3Val = document.getElementById("habitModalTwoMinInput").value;
+      const payload = {
+        title: document.getElementById("habitModalTitleInput").value,
+        two_minute_version: rule3Val,
+        cadence: document.getElementById("habitModalCadence").value,
+        category: document.getElementById("habitModalCategory").value,
+        rule1_obvious: document.getElementById("habitModalRule1").value,
+        rule2_attractive: document.getElementById("habitModalRule2").value,
+        rule3_easy: rule3Val,
+        rule4_satisfying: document.getElementById("habitModalRule4").value,
+        identity_ids: Array.from(state.modalHabitIdentities),
+      };
+      if (id) {
+        await api(`/api/habits/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
+        showToast("Habit updated");
+      } else {
+        await api("/api/habits", { method: "POST", body: JSON.stringify(payload) });
+        showToast("New habit added");
+      }
+      document.getElementById("habitModal").hidden = true;
+      await loadState();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
     }
-    document.getElementById("habitModal").hidden = true;
-    await loadState();
   });
 
   document.getElementById("prefillReviewBtn").addEventListener("click", () => {
@@ -1646,30 +1664,35 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("weeklyReviewForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const answers = {};
-    document.querySelectorAll("[data-review-question]").forEach((ta) => {
-      answers[ta.dataset.reviewQuestion] = ta.value;
-    });
-    const checks = {};
-    document.querySelectorAll("[data-sys-check]").forEach((chk) => {
-      checks[chk.dataset.sysCheck] = chk.checked;
-    });
+    try {
+      const answers = {};
+      document.querySelectorAll("[data-review-question]").forEach((ta) => {
+        answers[ta.dataset.reviewQuestion] = ta.value;
+      });
+      const checks = {};
+      document.querySelectorAll("[data-sys-check]").forEach((chk) => {
+        checks[chk.dataset.sysCheck] = chk.checked;
+      });
 
-    const res = await api("/api/weekly-review", {
-      method: "POST",
-      body: JSON.stringify({
-        week_start: state.data.week_start,
-        answers,
-        one_adjustment: document.getElementById("revOneAdjustment").value,
-        strongest_evidence: document.getElementById("revStrongestEvidence").value,
-        next_smallest_action: document.getElementById("revNextSmallestAction").value,
-        overall_stage: document.getElementById("revOverallStage").value,
-        system_checks: checks,
-      }),
-    });
-    document.getElementById("reviewSaveStatus").textContent = `Saved (${res.review_date}) & pinned to Dashboard`;
-    showToast("Weekly review saved");
-    await loadState();
+      const res = await api("/api/weekly-review", {
+        method: "POST",
+        body: JSON.stringify({
+          week_start: state.data.week_start,
+          answers,
+          one_adjustment: document.getElementById("revOneAdjustment").value,
+          strongest_evidence: document.getElementById("revStrongestEvidence").value,
+          next_smallest_action: document.getElementById("revNextSmallestAction").value,
+          overall_stage: document.getElementById("revOverallStage").value,
+          system_checks: checks,
+        }),
+      });
+      document.getElementById("reviewSaveStatus").textContent = `Saved (${res.review_date}) & pinned to Dashboard`;
+      showToast("Weekly review saved");
+      await loadState();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
   });
 
   document.getElementById("newGuidanceDocBtn").addEventListener("click", () => {
@@ -1682,36 +1705,25 @@ document.addEventListener("DOMContentLoaded", () => {
     renderGuidanceView();
   });
   document.getElementById("saveGuidanceBtn").addEventListener("click", async () => {
-    const idVal = document.getElementById("guidanceIdInput").value.trim() || state.activeGuidanceId || "custom-guide";
-    const mdVal = document.getElementById("guidanceMarkdownTextarea").value;
-    const res = await api("/api/guidance", {
-      method: "POST",
-      body: JSON.stringify({ id: idVal, markdown: mdVal }),
-    });
-    state.activeGuidanceId = res.id;
-    state.editingGuidance = false;
-    showToast(`Saved ${res.filename}`);
-    await loadGuidance();
+    try {
+      const idVal = document.getElementById("guidanceIdInput").value.trim() || state.activeGuidanceId;
+      if (!idVal) {
+        throw new Error("Filename slug is required for the guidance document.");
+      }
+      const mdVal = document.getElementById("guidanceMarkdownTextarea").value;
+      const res = await api("/api/guidance", {
+        method: "POST",
+        body: JSON.stringify({ id: idVal, markdown: mdVal }),
+      });
+      state.activeGuidanceId = res.id;
+      state.editingGuidance = false;
+      showToast(`Saved ${res.filename}`);
+      await loadGuidance();
+    } catch (err) {
+      console.error(err);
+      showToast(err.message);
+    }
   });
 
-  document.getElementById("saveSettingsBtn").addEventListener("click", async () => {
-    const antiPrinciple = document.getElementById("settingAntiPrinciple").value.trim();
-    const questions = document
-      .getElementById("settingQuestionsTextarea")
-      .value.split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    await api("/api/settings", {
-      method: "POST",
-      body: JSON.stringify({
-        anti_principle: antiPrinciple,
-        reflection_questions: questions,
-      }),
-    });
-    document.getElementById("settingsSaveStatus").textContent = "Saved settings";
-    showToast("System settings updated");
-    await loadState();
-  });
-
-  loadState();
+  loadState().catch((err) => showToast(err.message));
 });

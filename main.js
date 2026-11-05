@@ -4,8 +4,32 @@ const http = require("http");
 const fs = require("fs");
 const { spawn } = require("child_process");
 
-const SERVER_HOST = process.env.IDENTITY_OS_HOST || "127.0.0.1";
-const SERVER_PORT = process.env.PORT || 8765;
+function loadDotEnv(dotenvPath) {
+  if (!fs.existsSync(dotenvPath)) return;
+  const lines = fs.readFileSync(dotenvPath, "utf-8").split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || !line.includes("=")) continue;
+    const idx = line.indexOf("=");
+    const key = line.slice(0, idx).trim();
+    const val = line.slice(idx + 1).trim().replace(/^['"]|['"]$/g, "");
+    if (key && process.env[key] === undefined) {
+      process.env[key] = val;
+    }
+  }
+}
+
+loadDotEnv(path.join(__dirname, ".env"));
+
+const SERVER_HOST = (process.env.IDENTITY_OS_HOST || "").trim();
+const SERVER_PORT = Number((process.env.PORT || "").trim());
+
+if (!SERVER_HOST || !Number.isInteger(SERVER_PORT) || SERVER_PORT <= 0) {
+  throw new Error(
+    "Missing or invalid IDENTITY_OS_HOST / PORT configuration. Set them in .env or environment variables (see .env.example)."
+  );
+}
+
 const SERVER_URL = `http://${SERVER_HOST}:${SERVER_PORT}`;
 
 let mainWindow = null;
@@ -14,7 +38,8 @@ let isQuitting = false;
 
 function checkServerHealthy() {
   return new Promise((resolve) => {
-    const req = http.get(`${SERVER_URL}/api/state`, (res) => {
+    const req = http.get(`${SERVER_URL}/api/export`, (res) => {
+      res.resume();
       resolve(res.statusCode === 200);
     });
     req.on("error", () => resolve(false));
@@ -48,7 +73,7 @@ async function ensureBackendRunning() {
     process.stderr.write(`[Python error]: ${data}`);
   });
 
-  pythonProcess.on("exit", (code, signal) => {
+  pythonProcess.on("exit", (code) => {
     if (!isQuitting && mainWindow && !mainWindow.isDestroyed()) {
       dialog.showErrorBox(
         "Backend Terminated",
@@ -100,7 +125,7 @@ function setupAppMenu() {
       label: "File",
       submenu: [
         {
-          label: "Export JSON Backup...",
+          label: "Export Habits & Identities (JSON)...",
           accelerator: "CmdOrCtrl+E",
           click: async () => {
             if (mainWindow) {
@@ -109,11 +134,11 @@ function setupAppMenu() {
           },
         },
         {
-          label: "Import JSON Backup...",
+          label: "Import Habits & Identities (JSON)...",
           accelerator: "CmdOrCtrl+I",
           click: async () => {
             if (mainWindow) {
-              mainWindow.webContents.executeJavaScript("triggerImportJson('replace')");
+              mainWindow.webContents.executeJavaScript("triggerImportJson('merge')");
             }
           },
         },
@@ -121,7 +146,12 @@ function setupAppMenu() {
         {
           label: "Open Data Directory",
           click: () => {
-            const dataDir = path.join(__dirname, "data");
+            const dbEnv = (process.env.IDENTITY_OS_DB_PATH || "").trim();
+            if (!dbEnv) {
+              throw new Error("Missing IDENTITY_OS_DB_PATH in configuration.");
+            }
+            const resolvedDb = path.isAbsolute(dbEnv) ? dbEnv : path.join(__dirname, dbEnv);
+            const dataDir = path.dirname(resolvedDb);
             if (!fs.existsSync(dataDir)) {
               fs.mkdirSync(dataDir, { recursive: true });
             }
@@ -210,8 +240,8 @@ ipcMain.handle("dialog-export-json", async () => {
   if (!mainWindow) return { canceled: true };
   const dateStr = new Date().toISOString().slice(0, 10);
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-    title: "Export Identity OS Data (JSON)",
-    defaultPath: `identity_os_backup_${dateStr}.json`,
+    title: "Export Habits & Identities (JSON)",
+    defaultPath: `identities_and_habits_${dateStr}.json`,
     filters: [{ name: "JSON Files", extensions: ["json"] }],
   });
 
@@ -227,10 +257,10 @@ ipcMain.handle("dialog-export-json", async () => {
   }
 });
 
-ipcMain.handle("dialog-import-json", async (event, mode = "replace") => {
+ipcMain.handle("dialog-import-json", async (event, mode = "merge") => {
   if (!mainWindow) return { canceled: true };
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    title: `Import Identity OS Data (${mode === "merge" ? "Merge" : "Restore"} mode)`,
+    title: `Import Habits & Identities (${mode === "replace" ? "Replace" : "Merge"} mode)`,
     filters: [{ name: "JSON Files", extensions: ["json"] }],
     properties: ["openFile"],
   });
@@ -258,7 +288,12 @@ function fetchJsonFromLocalServer(endpoint) {
       res.on("data", (chunk) => (body += chunk));
       res.on("end", () => {
         try {
-          resolve(JSON.parse(body));
+          const parsed = JSON.parse(body);
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(parsed.error || `HTTP ${res.statusCode}`));
+            return;
+          }
+          resolve(parsed);
         } catch (e) {
           reject(e);
         }
@@ -284,7 +319,12 @@ function postJsonToLocalServer(endpoint, payload) {
         res.on("data", (chunk) => (body += chunk));
         res.on("end", () => {
           try {
-            resolve(JSON.parse(body));
+            const parsed = JSON.parse(body);
+            if (res.statusCode < 200 || res.statusCode >= 300) {
+              reject(new Error(parsed.error || `HTTP ${res.statusCode}`));
+              return;
+            }
+            resolve(parsed);
           } catch (e) {
             reject(e);
           }

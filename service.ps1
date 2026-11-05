@@ -8,13 +8,37 @@ param (
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$EnvFile = Join-Path $ScriptDir ".env"
+if (Test-Path $EnvFile) {
+    foreach ($rawLine in Get-Content $EnvFile) {
+        $line = $rawLine.Trim()
+        if ([string]::IsNullOrEmpty($line) -or $line.StartsWith("#") -or (-not $line.Contains("="))) {
+            continue
+        }
+        $parts = $line.Split("=", 2)
+        $k = $parts[0].Trim()
+        $v = $parts[1].Trim().Trim("'").Trim('"')
+        if ($k -and [string]::IsNullOrEmpty([System.Environment]::GetEnvironmentVariable($k))) {
+            [System.Environment]::SetEnvironmentVariable($k, $v, "Process")
+        }
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($env:IDENTITY_OS_HOST)) {
+    throw "Missing required configuration 'IDENTITY_OS_HOST'. Set it in .env or environment variables."
+}
+if ([string]::IsNullOrWhiteSpace($env:PORT)) {
+    throw "Missing required configuration 'PORT'. Set it in .env or environment variables."
+}
+
+$HostAddr = $env:IDENTITY_OS_HOST.Trim()
+$Port = [int]$env:PORT.Trim()
+$AppUrl = "http://${HostAddr}:${Port}"
 $AppScript = Join-Path $ScriptDir "app.py"
 $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $RegName = "IdentityBuildingOS"
 $StartupFolder = [System.Environment]::GetFolderPath('Startup')
 $ShortcutPath = Join-Path $StartupFolder "IdentityBuildingOS.lnk"
-$Port = if ($env:PORT) { [int]$env:PORT } else { 8765 }
-$AppUrl = "http://127.0.0.1:$Port"
 
 function Get-PythonwPath {
     $cmd = Get-Command pythonw -ErrorAction SilentlyContinue
@@ -84,7 +108,7 @@ function Show-Status {
             $response = Invoke-RestMethod -Uri "$AppUrl/api/state" -TimeoutSec 3 -ErrorAction Stop
             Write-Host " API:      Healthy (Today: $($response.today))" -ForegroundColor Green
         } catch {
-            Write-Host " API:      Starting or not responding yet" -ForegroundColor Yellow
+            Write-Host " API:      Starting or not responding yet ($($_.Exception.Message))" -ForegroundColor Yellow
         }
     } else {
         Write-Host " [STATUS]  STOPPED (Inactive)" -ForegroundColor Red
@@ -112,11 +136,18 @@ function Start-AppService {
     }
 
     $pyw = Get-PythonwPath
+    $logDir = Join-Path $ScriptDir "data"
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Force $logDir | Out-Null
+    }
+    $outLog = Join-Path $logDir "service.out.log"
+    $errLog = Join-Path $logDir "service.err.log"
+
     Write-Host "Starting Identity Building OS in the background..." -ForegroundColor Cyan
     Write-Host "Interpreter: $pyw"
     Write-Host "Script:      $AppScript"
 
-    Start-Process -FilePath $pyw -ArgumentList "`"$AppScript`"" -WorkingDirectory $ScriptDir
+    Start-Process -FilePath $pyw -ArgumentList "`"$AppScript`"" -WorkingDirectory $ScriptDir -RedirectStandardOutput $outLog -RedirectStandardError $errLog
 
     $started = $false
     for ($i = 0; $i -lt 10; $i++) {
@@ -132,7 +163,7 @@ function Start-AppService {
         Write-Host "Identity Building OS started successfully (PID: $($check.Id))!" -ForegroundColor Green
         Write-Host "Dashboard available at: $AppUrl" -ForegroundColor Green
     } else {
-        Write-Warning "Process started, but port $Port is not responding yet. Check logs or run python app.py directly to diagnose."
+        throw "Process started, but port $Port did not respond within timeout. Run 'python app.py' directly to diagnose."
     }
 }
 
@@ -143,9 +174,12 @@ function Stop-AppService {
         return
     }
 
-    Write-Host "Stopping Identity Building OS (PID: $($proc.Id))..." -ForegroundColor Cyan
-    Stop-Process -Id $proc.Id -Force -ErrorAction Stop
-    Start-Sleep -Seconds 1
+    while ($proc) {
+        Write-Host "Stopping Identity Building OS (PID: $($proc.Id))..." -ForegroundColor Cyan
+        Stop-Process -Id $proc.Id -Force -ErrorAction Stop
+        Start-Sleep -Milliseconds 400
+        $proc = Get-ServiceProcess
+    }
     Write-Host "Service stopped successfully." -ForegroundColor Green
 }
 
@@ -158,18 +192,14 @@ function Install-AppStartup {
     Set-ItemProperty -Path $RegPath -Name $RegName -Value $regCmd
     Write-Host " [x] Registered in Windows Registry: $RegPath\$RegName" -ForegroundColor Green
 
-    try {
-        $wscript = New-Object -ComObject WScript.Shell
-        $shortcut = $wscript.CreateShortcut($ShortcutPath)
-        $shortcut.TargetPath = $pyw
-        $shortcut.Arguments = "`"$AppScript`""
-        $shortcut.WorkingDirectory = $ScriptDir
-        $shortcut.Description = "Identity Building OS Background Service"
-        $shortcut.Save()
-        Write-Host " [x] Created Startup shortcut: $ShortcutPath" -ForegroundColor Green
-    } catch {
-        Write-Warning "Could not create startup shortcut: $_"
-    }
+    $wscript = New-Object -ComObject WScript.Shell
+    $shortcut = $wscript.CreateShortcut($ShortcutPath)
+    $shortcut.TargetPath = $pyw
+    $shortcut.Arguments = "`"$AppScript`""
+    $shortcut.WorkingDirectory = $ScriptDir
+    $shortcut.Description = "Identity Building OS Background Service"
+    $shortcut.Save()
+    Write-Host " [x] Created Startup shortcut: $ShortcutPath" -ForegroundColor Green
 
     Start-AppService
     Write-Host "`nIdentity Building OS is now installed to run automatically on Windows startup!" -ForegroundColor Green
@@ -179,12 +209,15 @@ function Uninstall-AppStartup {
     Write-Host "Removing Identity Building OS from Windows Startup..." -ForegroundColor Cyan
 
     if (Test-Path $RegPath) {
-        Remove-ItemProperty -Path $RegPath -Name $RegName -ErrorAction SilentlyContinue
-        Write-Host " [x] Removed Registry startup entry." -ForegroundColor Green
+        $existingProp = Get-ItemProperty -Path $RegPath -Name $RegName -ErrorAction SilentlyContinue
+        if ($null -ne $existingProp) {
+            Remove-ItemProperty -Path $RegPath -Name $RegName -ErrorAction Stop
+            Write-Host " [x] Removed Registry startup entry." -ForegroundColor Green
+        }
     }
 
     if (Test-Path $ShortcutPath) {
-        Remove-Item $ShortcutPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $ShortcutPath -Force -ErrorAction Stop
         Write-Host " [x] Removed Startup folder shortcut." -ForegroundColor Green
     }
 

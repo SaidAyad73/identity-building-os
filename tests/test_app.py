@@ -35,29 +35,74 @@ class IdentityOSVerificationTests(unittest.TestCase):
         app.GUIDANCE_DIR = (app.ROOT_DIR / "guidance").resolve()
         self.temp_dir.cleanup()
 
-    def test_01_resilient_bootstrap_and_schema(self) -> None:
-        """Verify DB initializes with built-in default settings, identities, and habits."""
-        app.init_db(db_path=self.db_path, seed_examples=False)
+    def _seed_test_identities_and_habits(self) -> tuple[list[str], list[str]]:
+        ident_specs = [
+            {"name": "Focused Craftsperson", "domain": "work"},
+            {"name": "Lifelong Learner", "domain": "growth"},
+            {"name": "Consistent Planner", "domain": "work"},
+        ]
+        ident_ids = [app.create_identity(spec, db_path=self.db_path)["id"] for spec in ident_specs]
+
+        habit_specs = [
+            {
+                "title": "Complete 60m deep-work block",
+                "identity_ids": [ident_ids[0], ident_ids[2]],
+                "rule1_obvious": "At 9:00 AM at clean desk",
+                "rule2_attractive": "Brew coffee before starting",
+                "rule3_easy": "Open file and write 2 lines",
+                "rule4_satisfying": "Cast a vote immediately",
+            },
+            {
+                "title": "Read 15 pages",
+                "identity_ids": [ident_ids[1]],
+                "rule1_obvious": "Book on pillow",
+                "rule2_attractive": "Choose an engaging topic",
+                "rule3_easy": "Read 1 page",
+                "rule4_satisfying": "Log reading vote",
+            },
+        ]
+        habit_ids = [app.create_habit(spec, db_path=self.db_path)["id"] for spec in habit_specs]
+        return ident_ids, habit_ids
+
+    def test_01_empty_bootstrap_and_no_invented_fallbacks(self) -> None:
+        """Verify DB initializes cleanly with 0 identities/habits and never invents fallback strings."""
+        app.init_db(db_path=self.db_path)
         state = app.get_app_state(db_path=self.db_path, scope="week")
-        self.assertGreaterEqual(len(state["identities"]), 6)
-        self.assertGreaterEqual(len(state["habits"]), 4)
-        self.assertIn("stages", state["settings"])
-        self.assertIn("reflection_questions", state["settings"])
-        self.assertIn("anti_principle", state["settings"])
+        self.assertEqual(state["identities"], [])
+        self.assertEqual(state["habits"], [])
+        self.assertEqual(state["actions"], [])
+        self.assertEqual(state["chart"]["total_votes"], 0)
+        self.assertEqual(state["chart"]["slices"], [])
+
+        # Creating an identity without a tagline leaves tagline as ""
+        ident = app.create_identity({"name": "Writer"}, db_path=self.db_path)
+        # Creating a habit without two_minute_version or rules leaves them as ""
+        habit = app.create_habit(
+            {"title": "Write 200 words", "identity_ids": [ident["id"]]},
+            db_path=self.db_path,
+        )
+
+        st2 = app.get_app_state(db_path=self.db_path, scope="week")
+        self.assertEqual(st2["identities"][0]["tagline"], "")
+        created_h = st2["habits"][0]
+        self.assertEqual(created_h["id"], habit["id"])
+        self.assertEqual(created_h["two_minute_version"], "")
+        self.assertEqual(created_h["rule1_obvious"], "")
+        self.assertEqual(created_h["rule2_attractive"], "")
+        self.assertEqual(created_h["rule3_easy"], "")
+        self.assertEqual(created_h["rule4_satisfying"], "")
 
     def test_02_fractional_pie_chart_math_no_double_counting(self) -> None:
-        app.init_db(db_path=self.db_path, seed_examples=False)
-        state0 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
-
-        ident_ids = [i["id"] for i in state0["identities"]]
-        ent_id, free_id, disc_id = ident_ids[0], ident_ids[1], ident_ids[4]
+        app.init_db(db_path=self.db_path)
+        ident_ids, _ = self._seed_test_identities_and_habits()
+        craft_id, learn_id, plan_id = ident_ids[0], ident_ids[1], ident_ids[2]
 
         app.create_action(
             {
-                "title": "Built MVP prototype",
+                "title": "Completed 60m deep-work block",
                 "action_date": "2026-10-26",
-                "identity_ids": [ent_id],
-                "evidence_note": "Deployed working demo",
+                "identity_ids": [craft_id],
+                "evidence_note": "Finished core module",
                 "kind": "vote",
             },
             db_path=self.db_path,
@@ -65,9 +110,9 @@ class IdentityOSVerificationTests(unittest.TestCase):
 
         app.create_action(
             {
-                "title": "Started client deliverable at 8:00 AM sharp",
+                "title": "Started morning study session at 8:00 AM sharp",
                 "action_date": "2026-10-26",
-                "identity_ids": [free_id, disc_id],
+                "identity_ids": [learn_id, plan_id],
                 "used_two_minute_rule": True,
                 "kind": "vote",
             },
@@ -76,9 +121,9 @@ class IdentityOSVerificationTests(unittest.TestCase):
 
         app.create_action(
             {
-                "title": "Shipped open-source module on schedule for client project",
+                "title": "Published technical study notes on schedule",
                 "action_date": "2026-10-27",
-                "identity_ids": [ent_id, free_id, disc_id],
+                "identity_ids": [craft_id, learn_id, plan_id],
                 "kind": "vote",
             },
             db_path=self.db_path,
@@ -86,9 +131,9 @@ class IdentityOSVerificationTests(unittest.TestCase):
 
         app.create_action(
             {
-                "title": "Scrolled short-form video late at night",
+                "title": "Checked notifications late at night",
                 "action_date": "2026-10-27",
-                "identity_ids": [disc_id],
+                "identity_ids": [plan_id],
                 "evidence_note": "Phone was left on desk",
                 "kind": "obstacle",
             },
@@ -105,26 +150,26 @@ class IdentityOSVerificationTests(unittest.TestCase):
         self.assertAlmostEqual(total_exact_weight, 3.0, places=6)
 
         slice_map = {s["identity_id"]: s for s in chart["slices"]}
-        self.assertAlmostEqual(slice_map[ent_id]["exact_weight"], 1.0 + 1.0 / 3.0, places=5)
-        self.assertEqual(slice_map[ent_id]["raw_touches"], 2)
-        self.assertAlmostEqual(slice_map[free_id]["exact_weight"], 0.5 + 1.0 / 3.0, places=5)
-        self.assertEqual(slice_map[free_id]["raw_touches"], 2)
-        self.assertAlmostEqual(slice_map[disc_id]["exact_weight"], 0.5 + 1.0 / 3.0, places=5)
-        self.assertEqual(slice_map[disc_id]["raw_touches"], 2)
+        self.assertAlmostEqual(slice_map[craft_id]["exact_weight"], 1.0 + 1.0 / 3.0, places=5)
+        self.assertEqual(slice_map[craft_id]["raw_touches"], 2)
+        self.assertAlmostEqual(slice_map[learn_id]["exact_weight"], 0.5 + 1.0 / 3.0, places=5)
+        self.assertEqual(slice_map[learn_id]["raw_touches"], 2)
+        self.assertAlmostEqual(slice_map[plan_id]["exact_weight"], 0.5 + 1.0 / 3.0, places=5)
+        self.assertEqual(slice_map[plan_id]["raw_touches"], 2)
 
         day_state = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="day")
         self.assertEqual(day_state["chart"]["total_votes"], 2)
         self.assertEqual(len(day_state["actions"]), 2)
 
-    def test_03_system_extendability_crud_triggers_and_rules(self) -> None:
-        """Verify adding habits with Rule 1 triggers and 4-rule metadata."""
-        app.init_db(db_path=self.db_path, seed_examples=False)
+    def test_03_system_extendability_crud_and_four_laws_rules(self) -> None:
+        """Verify adding and updating habits with the 4 simple rule strings."""
+        app.init_db(db_path=self.db_path)
 
         new_ident = app.create_identity(
             {
-                "name": "Open Source Maintainer",
-                "tagline": "I review PRs and maintain clean documentation.",
-                "domain": "work",
+                "name": "Mindful Practitioner",
+                "tagline": "I practice daily mindfulness and deliberate breathing.",
+                "domain": "growth",
                 "current_stage": "Experimenting",
             },
             db_path=self.db_path,
@@ -133,18 +178,15 @@ class IdentityOSVerificationTests(unittest.TestCase):
 
         new_habit = app.create_habit(
             {
-                "title": "Reviewed community pull request",
-                "two_minute_version": "Open PR queue and read the diff of 1 PR",
+                "title": "Complete 10 minutes of morning breathwork",
+                "two_minute_version": "Sit on the cushion and take 3 slow breaths",
                 "cadence": "daily",
                 "category": "identity_habit",
                 "identity_ids": [new_id],
-                "trigger_type": "time_location",
-                "trigger_time": "10:00 AM",
-                "trigger_location": "Home desk",
-                "rule1_obvious": "Pin GitHub notifications tab to browser",
-                "rule2_attractive": "Help open-source developers ship features",
-                "rule3_easy": "Review smallest PR first (< 10 lines)",
-                "rule4_satisfying": "Approve and merge",
+                "rule1_obvious": "Place meditation cushion in the center of the room at 7:00 AM",
+                "rule2_attractive": "Enjoy a calm, unhurried start before opening any screens",
+                "rule3_easy": "Sit on the cushion and take 3 slow breaths",
+                "rule4_satisfying": "Record a mindfulness vote immediately after finishing",
             },
             db_path=self.db_path,
         )
@@ -159,35 +201,34 @@ class IdentityOSVerificationTests(unittest.TestCase):
         )
 
         st = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
-        self.assertGreaterEqual(len(st["identities"]), 7)
+        self.assertEqual(len(st["identities"]), 1)
         created_h = next(h for h in st["habits"] if h["id"] == new_habit["id"])
-        self.assertEqual(created_h["trigger_type"], "time_location")
-        self.assertEqual(created_h["trigger_time"], "10:00 AM")
-        self.assertEqual(created_h["rule1_obvious"], "Pin GitHub notifications tab to browser")
+        self.assertEqual(created_h["rule1_obvious"], "Place meditation cushion in the center of the room at 7:00 AM")
+        self.assertEqual(created_h["rule2_attractive"], "Enjoy a calm, unhurried start before opening any screens")
+        self.assertEqual(created_h["rule3_easy"], "Sit on the cushion and take 3 slow breaths")
+        self.assertEqual(created_h["rule4_satisfying"], "Record a mindfulness vote immediately after finishing")
 
-        # Test updating habit rules & anti-identity inversion
         app.update_habit(
             new_habit["id"],
             {
-                "title": "Reviewed PRs with diligence",
-                "trigger_type": "habit_stack",
-                "trigger_anchor": "After morning coffee",
-                "rule1_obvious": "Updated stack trigger",
+                "title": "Complete 15 minutes of morning breathwork",
+                "rule1_obvious": "After pouring morning water, sit on the cushion immediately",
+                "rule3_easy": "Take 5 slow breaths with eyes closed",
             },
             db_path=self.db_path,
         )
         st2 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
         updated_h = next(h for h in st2["habits"] if h["id"] == new_habit["id"])
-        self.assertEqual(updated_h["trigger_type"], "habit_stack")
-        self.assertEqual(updated_h["trigger_anchor"], "After morning coffee")
+        self.assertEqual(updated_h["rule1_obvious"], "After pouring morning water, sit on the cushion immediately")
+        self.assertEqual(updated_h["rule3_easy"], "Take 5 slow breaths with eyes closed")
+        self.assertEqual(updated_h["two_minute_version"], "Take 5 slow breaths with eyes closed")
 
     def test_04_timestamps_devote_and_delete_reflected_in_db_and_logs(self) -> None:
-        app.init_db(db_path=self.db_path, seed_examples=False)
-        st0 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
-        ident_id = st0["identities"][0]["id"]
-        habit_id = st0["habits"][0]["id"]
+        app.init_db(db_path=self.db_path)
+        ident_ids, habit_ids = self._seed_test_identities_and_habits()
+        ident_id = ident_ids[0]
+        habit_id = habit_ids[0]
 
-        # 1. Verify action stores day, month, year, hour, minute, second in DB and logs
         created = app.create_action(
             {
                 "habit_id": habit_id,
@@ -219,7 +260,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
         self.assertRegex(st1["actions"][0]["timestamp_display"], r"^26/10/2026 \d{2}:\d{2}:\d{2}$")
         self.assertEqual(st1["chart"]["total_votes"], 1)
 
-        # 2. Devote the voted habit -> removes the vote from DB & logs
         devote_res1 = app.devote_action(
             {"habit_id": habit_id, "action_date": "2026-10-26", "identity_ids": [ident_id]},
             db_path=self.db_path,
@@ -229,7 +269,6 @@ class IdentityOSVerificationTests(unittest.TestCase):
         self.assertEqual(len(st2["actions"]), 0)
         self.assertEqual(st2["chart"]["total_votes"], 0)
 
-        # 3. Cast 2 votes and then log a negative devote -> net votes = 1, both reflected in logs
         app.create_action({"title": "Vote A", "action_date": "2026-10-26", "identity_ids": [ident_id], "kind": "vote"}, db_path=self.db_path)
         app.create_action({"title": "Vote B", "action_date": "2026-10-26", "identity_ids": [ident_id], "kind": "vote"}, db_path=self.db_path)
         devote_res2 = app.devote_action(
@@ -242,31 +281,30 @@ class IdentityOSVerificationTests(unittest.TestCase):
         self.assertEqual(st3["chart"]["total_devotes"], 1)
         self.assertEqual(len(st3["actions"]), 3)
 
-        # 4. Delete habit -> deletes habit and its associated actions from DB and logs
         app.create_action({"habit_id": habit_id, "action_date": "2026-10-26", "identity_ids": [ident_id], "kind": "vote"}, db_path=self.db_path)
         app.delete_habit(habit_id, db_path=self.db_path)
         st4 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
         self.assertFalse(any(h["id"] == habit_id for h in st4["habits"]))
         self.assertFalse(any(a["habit_id"] == habit_id for a in st4["actions"]))
 
-        # 5. Delete identity -> deletes identity and cleans up its exclusively linked habits & logs
         app.delete_identity(ident_id, db_path=self.db_path)
         st5 = app.get_app_state(db_path=self.db_path, selected_date="2026-10-26", scope="week")
         self.assertFalse(any(i["id"] == ident_id for i in st5["identities"]))
         self.assertFalse(any(ident_id in a["identity_ids"] for a in st5["actions"]))
 
     def test_05_weekly_review_and_http_endpoints(self) -> None:
-        app.init_db(db_path=self.db_path, seed_examples=True)
+        app.init_db(db_path=self.db_path)
+        self._seed_test_identities_and_habits()
         st = app.get_app_state(db_path=self.db_path, scope="week")
         rev_res = app.save_weekly_review(
             {
                 "week_start": st["week_start"],
-                "answers": {"What identity did my actions support this week?": "Entrepreneur and Reader"},
-                "one_adjustment": "Leave book on pillow every morning at 8am",
-                "strongest_evidence": "Shipped core feature and read 15 pages",
-                "next_smallest_action": "Read 2 pages before sleep",
+                "answers": {"What identity did my actions support this week?": "Focused Craftsperson and Lifelong Learner"},
+                "one_adjustment": "Leave book on pillow every morning at 8:00 AM",
+                "strongest_evidence": "Completed deep-work blocks and read 15 pages daily",
+                "next_smallest_action": "Read 1 page before sleep",
                 "overall_stage": "Becoming consistent",
-                "system_checks": {"my_habits_were_realistic_for_my_current": True},
+                "system_checks": {"system_realistic": True},
             },
             db_path=self.db_path,
         )
@@ -287,90 +325,103 @@ class IdentityOSVerificationTests(unittest.TestCase):
             with urllib.request.urlopen(f"{base_url}/api/state?scope=week") as resp:
                 self.assertEqual(resp.status, 200)
                 data = json.loads(resp.read().decode("utf-8"))
-                self.assertGreaterEqual(len(data["identities"]), 6)
+                self.assertEqual(len(data["identities"]), 3)
+
+            # Simulate windowless pythonw.exe (sys.stderr = None) with verbose logging enabled
+            old_stderr = sys.stderr
+            old_verbose = os.environ.get("IDENTITY_OS_VERBOSE")
+            try:
+                sys.stderr = None
+                os.environ["IDENTITY_OS_VERBOSE"] = "1"
+                with urllib.request.urlopen(f"{base_url}/") as resp:
+                    self.assertEqual(resp.status, 200)
+            finally:
+                sys.stderr = old_stderr
+                if old_verbose is not None:
+                    os.environ["IDENTITY_OS_VERBOSE"] = old_verbose
+                else:
+                    os.environ.pop("IDENTITY_OS_VERBOSE", None)
         finally:
             server.shutdown()
             server.server_close()
 
-    def test_06_json_export_and_import_for_ai_agents(self) -> None:
-        """Verify full database serialization and restoration via JSON for AI agents."""
-        app.init_db(db_path=self.db_path, seed_examples=False)
+    def test_06_json_export_and_import_identities_and_habits_only(self) -> None:
+        """Verify export/import only touches identities and habits and never exposes or wipes actions/reviews."""
+        app.init_db(db_path=self.db_path)
+        ident_ids, habit_ids = self._seed_test_identities_and_habits()
+        ident_id = ident_ids[0]
+        habit_id = habit_ids[0]
 
-        # 1. Export database to dict
+        app.create_action(
+            {"title": "Logged user action that must stay untouched", "action_date": "2026-11-05", "identity_ids": [ident_id], "habit_id": habit_id},
+            db_path=self.db_path,
+        )
+        app.save_weekly_review(
+            {"week_start": "2026-11-02", "one_adjustment": "Keep desk clear"},
+            db_path=self.db_path,
+        )
+
         exported = app.export_database_to_dict(self.db_path, self.guidance_dir)
         self.assertEqual(exported["schema_version"], 1)
         self.assertIn("identities", exported)
         self.assertIn("habits", exported)
-        self.assertIn("settings", exported)
-        self.assertGreaterEqual(len(exported["identities"]), 6)
+        self.assertNotIn("actions", exported)
+        self.assertNotIn("weekly_reviews", exported)
+        self.assertNotIn("settings", exported)
+        self.assertNotIn("guidance", exported)
 
-        # 2. Add an action and a custom habit with triggers
-        habit_id = exported["habits"][0]["id"]
-        ident_id = exported["identities"][0]["id"]
-        app.create_action(
-            {"title": "Agent action test", "action_date": "2026-11-05", "identity_ids": [ident_id], "habit_id": habit_id},
-            db_path=self.db_path,
-        )
-
-        exported_with_action = app.export_database_to_dict(self.db_path, self.guidance_dir)
-        self.assertEqual(len(exported_with_action["actions"]), 1)
-
-        # 3. Create a fresh second database and import the exported state
-        db_path_2 = Path(self.temp_dir.name) / "test_import_os.db"
-        app.init_db(db_path=db_path_2, seed_examples=False)
-
-        import_res = app.import_database_from_dict(exported_with_action, db_path=db_path_2, guidance_dir=self.guidance_dir, mode="replace")
-        self.assertEqual(import_res["status"], "imported")
-        self.assertEqual(import_res["actions_count"], 1)
-
-        st2 = app.get_app_state(db_path=db_path_2, selected_date="2026-11-05", scope="day")
-        self.assertEqual(len(st2["actions"]), 1)
-        self.assertEqual(st2["actions"][0]["title"], "Agent action test")
-
-        # 4. Test merge mode: add new habit via JSON merge
         merge_payload = {
             "habits": [
                 {
-                    "id": "habit_agent_created",
-                    "title": "Created autonomously by AI Agent",
+                    "id": "habit_shared_setup",
+                    "title": "Practice 20 minutes of deliberate skill drills",
                     "cadence": "daily",
-                    "two_minute_version": "Spend 2 min on AI prompt",
+                    "two_minute_version": "Open practice material for 2 minutes",
                     "category": "identity_habit",
                     "sort_order": 99,
                     "active": 1,
                     "identity_ids": [ident_id],
-                    "trigger_type": "time_location",
-                    "trigger_time": "11:00 AM",
-                    "trigger_location": "Terminal",
-                    "rule1_obvious": "Schedule automated agent run",
-                    "rule2_attractive": "Rapid progress",
-                    "rule3_easy": "One command",
-                    "rule4_satisfying": "Green test pass",
+                    "rule1_obvious": "Keep practice notebook on desk",
+                    "rule2_attractive": "Track visible skill mastery",
+                    "rule3_easy": "Open practice material for 2 minutes",
+                    "rule4_satisfying": "Cast a vote after finishing the drill",
                 }
             ]
         }
-        merge_res = app.import_database_from_dict(merge_payload, db_path=db_path_2, guidance_dir=self.guidance_dir, mode="merge")
+        merge_res = app.import_database_from_dict(merge_payload, db_path=self.db_path, mode="merge")
         self.assertEqual(merge_res["status"], "imported")
-        st3 = app.get_app_state(db_path=db_path_2, scope="week")
-        self.assertTrue(any(h["id"] == "habit_agent_created" for h in st3["habits"]))
+
+        st_after_merge = app.get_app_state(db_path=self.db_path, selected_date="2026-11-05", scope="day")
+        self.assertTrue(any(h["id"] == "habit_shared_setup" for h in st_after_merge["habits"]))
+        self.assertEqual(len(st_after_merge["actions"]), 1)
+        self.assertEqual(st_after_merge["actions"][0]["title"], "Logged user action that must stay untouched")
+        self.assertEqual(st_after_merge["weekly_review"]["pinned_adjustment"]["one_adjustment"], "Keep desk clear")
+
+        replace_res = app.import_database_from_dict(exported, db_path=self.db_path, mode="replace")
+        self.assertEqual(replace_res["status"], "imported")
+        st_after_replace = app.get_app_state(db_path=self.db_path, selected_date="2026-11-05", scope="day")
+        self.assertFalse(any(h["id"] == "habit_shared_setup" for h in st_after_replace["habits"]))
+        self.assertEqual(len(st_after_replace["actions"]), 1)
+        self.assertEqual(st_after_replace["weekly_review"]["pinned_adjustment"]["one_adjustment"], "Keep desk clear")
 
     def test_07_cli_and_rest_export_import(self) -> None:
         """Verify CLI flags --export / --import and REST /api/export /api/import."""
-        app.init_db(db_path=self.db_path, seed_examples=False)
-        json_file = Path(self.temp_dir.name) / "cli_backup.json"
+        app.init_db(db_path=self.db_path)
+        self._seed_test_identities_and_habits()
+        json_file = Path(self.temp_dir.name) / "cli_habits.json"
 
-        # Test CLI export explicitly targeted to test db
         handled_export = app.handle_cli_args(["--db", str(self.db_path), "--export", str(json_file)])
         self.assertTrue(handled_export)
         self.assertTrue(json_file.is_file())
         exported_data = json.loads(json_file.read_text(encoding="utf-8"))
         self.assertEqual(exported_data["schema_version"], 1)
+        self.assertIn("identities", exported_data)
+        self.assertIn("habits", exported_data)
+        self.assertNotIn("actions", exported_data)
 
-        # Test CLI import explicitly targeted to test db
-        handled_import = app.handle_cli_args(["--db", str(self.db_path), "--import", str(json_file), "--merge"])
+        handled_import = app.handle_cli_args(["--db", str(self.db_path), "--import", str(json_file)])
         self.assertTrue(handled_import)
 
-        # Test HTTP REST export and import
         app.IdentityOSRequestHandler.db_path = self.db_path
         app.IdentityOSRequestHandler.guidance_dir = app.GUIDANCE_DIR
 
@@ -387,6 +438,7 @@ class IdentityOSVerificationTests(unittest.TestCase):
                 data = json.loads(resp.read().decode("utf-8"))
                 self.assertIn("identities", data)
                 self.assertIn("habits", data)
+                self.assertNotIn("actions", data)
 
             import_req = urllib.request.Request(
                 f"{base_url}/api/import",
@@ -404,38 +456,40 @@ class IdentityOSVerificationTests(unittest.TestCase):
 
     def test_08_fail_loudly_no_silent_swallows(self) -> None:
         """Verify errors are propagated loudly rather than silently swallowed."""
-        app.init_db(db_path=self.db_path, seed_examples=False)
+        app.init_db(db_path=self.db_path)
 
-        # 1. Invalid date format must raise ValueError
+        with self.assertRaises(ValueError):
+            app.slugify("!!!")
+
         with self.assertRaises(ValueError):
             app.build_timestamp_fields("not-a-valid-date")
 
-        # 2. Invalid action kind must raise ValueError
         with self.assertRaises(ValueError):
             app.create_action(
-                {"title": "Test", "identity_ids": ["entrepreneur"], "kind": "invalid_kind"},
+                {"title": "Test", "identity_ids": ["focused_craftsperson"], "kind": "invalid_kind"},
                 db_path=self.db_path,
             )
 
-        # 3. Invalid identity ID must raise ValueError
         with self.assertRaises(ValueError):
             app.create_action(
                 {"title": "Test", "identity_ids": ["non_existent_identity_id"], "kind": "vote"},
                 db_path=self.db_path,
             )
 
-        # 4. Invalid devote mode must raise ValueError
         with self.assertRaises(ValueError):
             app.devote_action(
                 {"title": "Test", "mode": "unsupported_mode"},
                 db_path=self.db_path,
             )
 
-        # 5. Corrupted JSON in settings must raise ValueError
-        with app.connect_db(self.db_path) as conn:
-            conn.execute("INSERT OR REPLACE INTO settings (key, value_json) VALUES ('corrupted_key', '{not_json}')")
-            with self.assertRaises(ValueError):
-                app.get_settings(conn)
+        with self.assertRaises(ValueError):
+            app.import_database_from_dict({"identities": []}, db_path=self.db_path, mode="invalid_mode")
+
+        with self.assertRaises(ValueError):
+            app.handle_cli_args(["--export"])
+
+        with self.assertRaises(ValueError):
+            app.handle_cli_args(["--import"])
 
 
 if __name__ == "__main__":
